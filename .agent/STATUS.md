@@ -1,7 +1,7 @@
 Current phase: Sprint 0
 Current gate: G0 — Bootstrap
 Current ticket: QL-BOOTSTRAP
-Current status: CODEX_COMPLETED
+Current status: COMMITTED
 
 Allowed statuses:
 - DRAFT
