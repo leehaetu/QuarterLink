@@ -1,7 +1,10 @@
 Current phase: Sprint 0
-Current gate: G1 — App skeleton
-Current ticket: QL-001
-Current status: CODEX_COMPLETED
+Current gate: G1 — App skeleton and source-of-truth control closed
+Current ticket: QL-003
+Current status: DRAFT
+
+Last completed ticket: QL-002
+Last completed status: COMMITTED
 
 Allowed statuses:
 - DRAFT

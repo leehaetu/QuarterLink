@@ -1,6 +1,6 @@
 # QuarterLink — AI Workflow and Control Rules v2
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 Status: active workflow source of truth
 
 ## Roles
@@ -159,13 +159,14 @@ If official HMRC/GOV.UK guidance changes:
 
 ## Current workflow gate
 
-The project is still pre-product-feature.
+The bootstrap and project-pack cleanup are closed.
 
-Next work must be:
+Current direction:
 
-1. Review QL-001, which is `CODEX_COMPLETED` and pushed to `main`.
-2. Decide whether QL-001 should move to `GPT_ACCEPTED` or `FIX_REQUIRED`; Codex must not mark that status.
-3. Clean up active project-pack files before treating `docs/Project files in chatGPT/` as complete source of truth.
-4. Only after QL-001 is accepted, approve the next ticket.
+1. QL-001 is accepted by the human and recorded as `COMMITTED`.
+2. The project-file consolidation is accepted by the human and recorded as completed/committed.
+3. QL-002 reconciles the ticket sequence and does not mark anything `GPT_ACCEPTED`.
+4. QL-003 is the next draft ticket: sandbox-readiness MVP target and HMRC production-access checklist.
+5. QL-004 should move quickly back into product UI/workflow implementation after QL-003 is accepted.
 
-No HMRC/auth/database/spreadsheet feature work starts before QL-001 is accepted and the next ticket is explicitly approved.
+No HMRC/auth/database/spreadsheet feature work starts without an explicitly approved ticket. The project should now move toward a polished sandbox-readiness MVP, not remain in open-ended documentation cleanup.

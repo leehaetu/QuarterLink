@@ -1,7 +1,7 @@
 # Project Files Consolidation Report 001
 
-Status: CLEANUP_COMPLETED_PENDING_HUMAN_REVIEW
-Date: 2026-05-11
+Status: COMPLETED_AND_COMMITTED
+Date: 2026-05-12
 
 ## Purpose
 
@@ -81,8 +81,8 @@ ESLint ignores `docs/Project files in chatGPT/Archive/**` so archived prototype 
 - `npm run typecheck`: passed.
 - `npm run build`: passed.
 
-## Recommendation
+## Closeout
 
-Human/GPT should review this consolidation and then commit the active `00` to `08` v2 pack, the archive zip, this report, and the ESLint ignore update if accepted.
+Human review accepted this consolidation. The active `00` to `08` v2 pack, the archive zip, this report, and the ESLint ignore update were committed before QL-002.
 
 Codex must not mark this `GPT_ACCEPTED`.

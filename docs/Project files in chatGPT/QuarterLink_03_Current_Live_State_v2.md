@@ -1,16 +1,16 @@
-# QuarterLink — Current Live State v2
+# QuarterLink - Current Live State v2
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 Repository: `leehaetu/QuarterLink`
 Default branch: `main`
-Status: QL-001 pushed to main; pending GPT/human acceptance review
+Status: QL-001 and project-file consolidation accepted by the human; QL-002 control sync committed.
 
-## Confirmed live repo state
+## Confirmed Live Repo State At Start Of QL-002
 
-Known latest committed state:
+Known latest committed state before QL-002 began:
 
 ```text
-ec0e78939609cc7a4befae8ee354fe030b2d5e37
+e0b39fdc7565a87e75890d8bcbf9f57308a86ce8
 ```
 
 Known tag:
@@ -19,66 +19,59 @@ Known tag:
 bootstrap-complete
 ```
 
-Known control state:
+Known branch state:
 
-- `.agent/STATUS.md` says current ticket `QL-001` is `CODEX_COMPLETED`.
-- `.agent/QUEUE.md` says `QL-BOOTSTRAP` is `COMMITTED`.
-- `.agent/QUEUE.md` says `QL-001` is `CODEX_COMPLETED`.
-- `docs/tickets/QL-BOOTSTRAP.md` says `COMMITTED`.
-- `QL-001` is `CODEX_COMPLETED`.
-- `QL-002`, `QL-003`, and `QL-004` are still `DRAFT`.
+- Current branch: `main`.
+- `main` matched `origin/main` before QL-002 edits began.
+- QL-002 control-sync edits have been committed locally.
 
-## Resolved accidental branch
+## Current Control State
 
-A branch was accidentally created by GPT/GitHub tooling:
+- `QL-BOOTSTRAP` is `COMMITTED`.
+- `QL-001` is now recorded as `COMMITTED` after human acceptance.
+- Project-file consolidation report 001 is now recorded as completed and committed.
+- `QL-002` is the control-sync ticket that closes the drift and reconciles the ticket sequence.
+- `QL-003` is the next draft ticket.
+- Codex did not mark any work `GPT_ACCEPTED`.
 
-```text
-ql-001-status-fix-draft
-```
+## Accepted Completed Work
 
-It was deleted from `origin` on 2026-05-11 after explicit human approval.
+QL-001 delivered:
 
-Post-deletion checks show no matching local branch and no matching remote branch.
-
-## Resolved local drift
-
-`docs/tickets/QL-BOOTSTRAP.md` now says:
-
-```text
-Status: COMMITTED
-```
-
-This now matches `.agent/STATUS.md` and `.agent/QUEUE.md` in the local working tree:
-
-```text
-COMMITTED
-```
-
-This drift fix was committed and pushed as part of QL-001.
-
-## Current QL-001 state
-
-`docs/tickets/QL-001.md` was too thin. It previously said:
-
-```text
-Scope
-To be specified in a later ticket.
-```
-
-The live `main` branch now contains the implemented QL-001 web-app skeleton:
-
-- `README.md` cleanup.
+- README cleanup.
 - Static app-oriented first screen.
+- Next.js App Router skeleton in `src/app`.
+- TypeScript, Tailwind CSS, ESLint, npm scripts, and Turbopack.
+- Placeholder country-aware architecture under `src/core` and `src/tax-regimes`.
 - No HMRC, authentication, database, spreadsheet parsing, billing, tenant persistence, or platform admin features.
-- QL-001 is `CODEX_COMPLETED`, not `GPT_ACCEPTED`.
 
-## Current repo capability
+Project-file consolidation delivered:
+
+- Clean active v2 project pack from files `00` to `08`.
+- Old duplicate/deleted reference folders removed.
+- Historical website prototype retained only under `Archive/`.
+- Extracted dashboard, website direction, and later deployment notes into active v2 files.
+- ESLint ignores the archived website prototype material.
+
+## Product Direction Clarification
+
+The goal is not to build a throwaway sandbox hack.
+
+The goal is a polished sandbox-readiness MVP:
+
+- good enough UI/UX that the product feels credible to use internally,
+- narrow enough to reach HMRC sandbox testing quickly,
+- structured enough that production access is not blocked later by missing security, evidence, audit, or fraud-prevention decisions.
+
+Sandbox testing should start after the focused workflow is coherent, not after every future SaaS feature is complete.
+
+## Current Repo Capability
 
 Implemented:
 
 - Next.js scaffold.
 - TypeScript.
-- Tailwind.
+- Tailwind CSS.
 - ESLint.
 - `src/` directory.
 - Static app-oriented first screen.
@@ -97,29 +90,42 @@ Not implemented:
 - Fraud prevention headers.
 - Spreadsheet upload/import.
 - Digital-link evidence.
-- Quarterly update submission.
+- Quarterly update sending.
 - Audit logs.
 - Evidence packs.
 - Public production website.
 - Billing.
 - Practice/client workflows.
 
-## Known skeleton cleanup item
+## Correct Next Action
 
-`README.md` default create-next-app boilerplate and `app/page.tsx` path drift are fixed in the local QL-001 implementation.
+After QL-002 is committed, the next ticket should be QL-003:
 
-This is committed and pushed. QL-001 still needs GPT/human acceptance review.
+```text
+Sandbox-readiness MVP target and HMRC production-access checklist.
+```
 
-## Correct next action
+QL-003 should be short and practical. It should define the narrow path for:
 
-Order:
+- one polished individual-user workflow,
+- Route B spreadsheet records,
+- read-only imported totals when import exists,
+- evidence boundaries,
+- HMRC sandbox readiness,
+- official HMRC production-access checklist items.
 
-1. Review QL-001 implementation.
-2. Move QL-001 through GPT/human acceptance if approved, or mark fixes required.
-3. Clean up the project-pack source files before treating `docs/Project files in chatGPT/` as complete source of truth.
-4. Do not start QL-002 until QL-001 is accepted and the next ticket is explicitly approved.
+Then move quickly into QL-004 product UI/workflow implementation.
 
-## Update rule
+## Ticket Sequence
+
+- `QL-003`: Sandbox-readiness MVP target and HMRC production-access checklist.
+- `QL-004`: Polished app workspace and guided workflow shell.
+- `QL-005`: Spreadsheet Route B local workflow and evidence design.
+- `QL-006`: Auth, tenant, audit, secrets, and HMRC access architecture.
+- `QL-007`: HMRC sandbox integration foundation.
+- `QL-008`: First HMRC sandbox quarterly update evidence run.
+
+## Update Rule
 
 Update this file after every:
 

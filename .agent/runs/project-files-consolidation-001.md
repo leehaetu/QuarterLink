@@ -1,7 +1,7 @@
 # Project Files Consolidation Run 001
 
 Ticket: none
-Status: CLEANUP_COMPLETED_PENDING_HUMAN_REVIEW
+Status: COMPLETED_AND_COMMITTED
 Branch: main
 Date: 2026-05-11
 
@@ -60,4 +60,4 @@ This was a documentation/control cleanup, not product implementation. Codex did 
 
 ## Suggested next step
 
-Human/GPT review should decide whether to commit the cleaned v2 project pack, the single archive zip, this run record, the consolidation report, and the ESLint ignore update.
+Human review accepted the cleaned v2 project pack, the single archive zip, this run record, the consolidation report, and the ESLint ignore update. The work was committed before QL-002.

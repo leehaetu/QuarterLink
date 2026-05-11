@@ -1,6 +1,6 @@
 # QuarterLink — Project File Index and Usage Rules v2
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 Status: active project-pack index
 
 ## Purpose
@@ -88,14 +88,14 @@ If the repo conflicts with the project files, stop and call out the conflict bef
 
 ## Current immediate priority
 
-Do not build HMRC, authentication, database, spreadsheet import, billing, or tenant-management features yet.
+Do not build HMRC, authentication, database, spreadsheet import, billing, or tenant-management features without an approved ticket.
 
 Immediate order:
 
-1. Review QL-001, which is `CODEX_COMPLETED` and pushed to `main`.
-2. Decide whether QL-001 is accepted or needs fixes. Codex must not mark it `GPT_ACCEPTED`.
-3. Review and commit the cleaned v2 project-pack files if accepted.
-4. After QL-001 is accepted, create QL-002 as a specification/documentation ticket, not a feature ticket.
+1. Treat QL-001 and the project-file consolidation as human-accepted and committed after the QL-002 control-sync commit.
+2. Use QL-003 to define the narrow polished sandbox-readiness MVP and HMRC production-access checklist.
+3. Move quickly into QL-004 product UI/workflow implementation.
+4. Keep sandbox evidence claims blocked until real HMRC sandbox API calls occur.
 
 
 ## Official sources checked for this v2 pack
