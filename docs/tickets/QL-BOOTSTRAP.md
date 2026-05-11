@@ -1,6 +1,6 @@
 # QL-BOOTSTRAP
 
-Status: CODEX_COMPLETED
+Status: COMMITTED
 
 ## Goal
 
