@@ -69,6 +69,45 @@ QL-007 deliberately rejects `HMRC_PRODUCTION_*` variables if they are present in
 
 The current application UI still shows local/demo evidence only. It must not be treated as HMRC sandbox evidence.
 
+## QL-008 OAuth Readiness
+
+The local OAuth readiness flow is sandbox-only and uses the individual sandbox test user path. It does not add product authentication, database storage, production endpoints, product UI, Business Details calls, Obligations calls, Self Employment Business calls, or Test Fraud Prevention Headers calls.
+
+Register this exact redirect URI on the HMRC sandbox application:
+
+`http://localhost:3000/api/hmrc/oauth/callback`
+
+Set these local-only values before starting the OAuth journey:
+
+```bash
+APP_ENV=local
+HMRC_ENV=sandbox
+HMRC_SANDBOX_API_BASE_URL=https://test-api.service.hmrc.gov.uk
+HMRC_SANDBOX_AUTH_BASE_URL=https://test-www.tax.service.gov.uk
+HMRC_SANDBOX_CLIENT_ID=<sandbox-client-id>
+HMRC_SANDBOX_CLIENT_SECRET=<sandbox-client-secret>
+HMRC_SANDBOX_REDIRECT_URI=http://localhost:3000/api/hmrc/oauth/callback
+HMRC_SANDBOX_SCOPES="read:self-assessment write:self-assessment"
+HMRC_SANDBOX_TEST_USER_TYPE=individual
+HMRC_SANDBOX_OAUTH_STATE=<local-random-opaque-state-at-least-16-chars>
+HMRC_SANDBOX_OAUTH_SHOW_TOKENS=true
+```
+
+Use `HMRC_SANDBOX_OAUTH_SHOW_TOKENS=true` only while obtaining the local sandbox access token. The callback response displays the access token only in the local browser response and never writes it to source-controlled files. Do not commit the client secret, access token, refresh token, authorisation code, or HMRC test-user password.
+
+Start the app locally and open:
+
+`http://localhost:3000/api/hmrc/oauth/start`
+
+Sign in with an HMRC individual sandbox test user, not an organisation test user. After the callback returns an access token in the local browser response, set it only in the local shell as:
+
+```bash
+HMRC_SANDBOX_ACCESS_TOKEN=<access-token-from-local-callback>
+HMRC_SANDBOX_TEST_USER_READY=true
+```
+
+Then rerun the QL-008 preflight. The preflight still requires taxpayer/business/period context and real fraud-prevention inputs before any Income Tax MTD sandbox call is safe.
+
 ## Server Boundary
 
 QL-007 code lives under `src/server/hmrc`. It is intended for server-side use only.
