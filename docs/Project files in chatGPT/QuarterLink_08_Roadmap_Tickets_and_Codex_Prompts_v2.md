@@ -9,7 +9,7 @@ Phase 1: polished sandbox-readiness MVP.
 
 Bootstrap and project-pack cleanup are complete. QL-001 and the project-file consolidation have been accepted by the human and are recorded as committed through the QL-002 control sync.
 
-The next goal is QL-006: define the auth, tenant, audit, secrets, and HMRC access architecture before sandbox integration work.
+QL-006 has been accepted by human review. The next goal is QL-007: HMRC sandbox integration foundation.
 
 ## Strategy
 
@@ -125,6 +125,8 @@ QL-005 built a local/static Route B workflow and evidence preview only. It did n
 
 ## QL-006 - Auth, Tenant, Audit, Secrets, and HMRC Access Architecture
 
+Status: `GPT_ACCEPTED` after human review on 2026-05-12.
+
 Purpose:
 
 - Decide the minimum security foundation needed before real HMRC sandbox integration.
@@ -136,6 +138,8 @@ Out of scope unless explicitly approved:
 - Full production auth.
 - Full database implementation.
 - HMRC API implementation.
+
+QL-006 was documentation/specification only. It did not implement product code, HMRC OAuth, HMRC API calls, authentication, database persistence, spreadsheet parsing, submissions, billing, practice workflows, public website functionality, or production evidence generation.
 
 ## QL-007 - HMRC Sandbox Integration Foundation
 
