@@ -3,7 +3,7 @@
 Last updated: 2026-05-12
 Repository: `leehaetu/QuarterLink`
 Default branch: `main`
-Status: QL-003 accepted by human review; QL-004 is the next active ticket and has not been started.
+Status: QL-004 accepted by human review; QL-005 is the next active ticket and has not been started.
 
 ## Confirmed Live Repo State At Start Of QL-002
 
@@ -33,7 +33,9 @@ Known branch state:
 - `QL-002` is the control-sync ticket that closed the drift and reconciled the ticket sequence.
 - `QL-003` is recorded as `GPT_ACCEPTED` after human review on 2026-05-12.
 - `QL-003` was documentation/specification only and did not implement product code, HMRC API calls, authentication, database storage, spreadsheet parsing, submissions, billing, practice workflows, or public website work.
-- `QL-004` is the next active ticket, but it has not been started.
+- `QL-004` is recorded as `GPT_ACCEPTED` after human review on 2026-05-12.
+- `QL-004` built a static/local guided app workspace shell only; no HMRC OAuth, HMRC API calls, authentication, database persistence, spreadsheet parsing, real submissions, billing, practice workflows, or production website functionality were added.
+- `QL-005` is the next active ticket, but it has not been started.
 - Codex did not mark any work `GPT_ACCEPTED` without human instruction.
 
 ## Accepted Completed Work
@@ -101,15 +103,13 @@ Not implemented:
 
 ## Correct Next Action
 
-After QL-003 acceptance, the next ticket should be QL-004:
+After QL-004 human review, the next ticket should be QL-005:
 
 ```text
-Polished app workspace and guided workflow shell.
+Spreadsheet Route B local workflow and evidence design.
 ```
 
-QL-004 should build a guided app workspace using static/local state only. It must not start HMRC API calls, authentication, database storage, spreadsheet parsing, submissions, sandbox evidence, public website work, billing, or practice workflows unless a later approval changes the ticket scope.
-
-Do not start QL-004 until explicitly instructed.
+Do not start QL-005 until explicitly instructed.
 
 ## Ticket Sequence
 

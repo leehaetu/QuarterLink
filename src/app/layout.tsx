@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "QuarterLink",
+  title: "QuarterLink Workspace Preview",
   description:
-    "Send Making Tax Digital for Income Tax quarterly updates from your spreadsheet.",
+    "Local workspace preview for Making Tax Digital for Income Tax quarterly updates from spreadsheet records.",
 };
 
 export default function RootLayout({

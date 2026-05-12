@@ -9,7 +9,7 @@ Phase 1: polished sandbox-readiness MVP.
 
 Bootstrap and project-pack cleanup are complete. QL-001 and the project-file consolidation have been accepted by the human and are recorded as committed through the QL-002 control sync.
 
-The next goal is QL-004: build a credible, usable guided app workspace that can lead toward HMRC sandbox testing without creating avoidable production-access blockers.
+The next goal is QL-005: define the Route B spreadsheet workflow and evidence design in detail.
 
 ## Strategy
 
@@ -85,7 +85,7 @@ QL-003 did not implement product code, HMRC API calls, authentication, database 
 
 ## QL-004 - Polished App Workspace and Guided Workflow Shell
 
-Next active ticket. Not started.
+Status: `GPT_ACCEPTED` after human review on 2026-05-12.
 
 Purpose:
 
@@ -101,6 +101,8 @@ Out of scope:
 - Spreadsheet parsing.
 - Sandbox evidence.
 - Public marketing website.
+
+QL-004 built a static/local app workspace shell only. It did not implement HMRC OAuth, HMRC API calls, authentication, database persistence, spreadsheet parsing, real submissions, billing, practice workflows, or production website functionality.
 
 ## QL-005 - Spreadsheet Route B Local Workflow and Evidence Design
 
