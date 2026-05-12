@@ -3,7 +3,7 @@
 Last updated: 2026-05-12
 Repository: `leehaetu/QuarterLink`
 Default branch: `main`
-Status: QL-006 accepted by human review; QL-007 is the next active ticket and has not been started.
+Status: QL-007 accepted by human review; QL-008 is the next active ticket and has not been started.
 
 ## Confirmed Live Repo State At Start Of QL-002
 
@@ -40,7 +40,11 @@ Known branch state:
 - `QL-006` is recorded as `GPT_ACCEPTED` after human review on 2026-05-12.
 - `QL-006` created architecture/specification outputs for auth, tenant boundaries, session assumptions, audit events, secrets, HMRC OAuth/token handling, consent/declaration records, and fraud-prevention-header handling.
 - `QL-006` was documentation/specification only; no product code, HMRC OAuth implementation, HMRC API calls, authentication implementation, database persistence, spreadsheet parsing, real submissions, billing, practice workflows, public website functionality, or production evidence generation was added.
-- `QL-007` is the next active ticket, but it has not been started.
+- `QL-007` is recorded as `GPT_ACCEPTED` after human review on 2026-05-12.
+- `QL-007` added limited server-side HMRC sandbox foundation code: sandbox config validation, OAuth URL construction, request construction, fraud-prevention-header assembly, redaction helpers, tests, and setup documentation.
+- `QL-007` did not implement HMRC API network calls, production HMRC calls, persistent token storage, database migrations, spreadsheet parsing, real quarterly update sending, final declaration or tax return features, HMRC sandbox evidence, or production evidence.
+- QL-007 acceptance confirmed `npm audit --audit-level=moderate` still reports 2 moderate advisories from Next's bundled PostCSS dependency. No `npm audit fix --force` was applied because npm reports a potentially breaking fix path.
+- `QL-008` is now the next active ticket, but it has not been started.
 - Codex did not mark any work `GPT_ACCEPTED` without human instruction.
 
 ## Accepted Completed Work
@@ -87,6 +91,7 @@ Implemented:
 - Control files.
 - Placeholder source folders.
 - Lightweight tax-regime placeholders.
+- Limited server-side HMRC sandbox foundation helpers for configuration validation, request construction, fraud-prevention-header assembly, and redaction. These helpers do not perform HMRC network calls.
 
 Not implemented:
 
@@ -94,9 +99,11 @@ Not implemented:
 - Organisation/tenant model.
 - Database.
 - Row-level access control.
-- HMRC OAuth.
-- HMRC APIs.
-- Fraud prevention headers.
+- Full HMRC OAuth journey or callback handling.
+- HMRC API network calls.
+- Persistent HMRC token storage.
+- Browser-side fraud-prevention-header collection.
+- Test Fraud Prevention Headers API calls.
 - Spreadsheet upload/import.
 - Digital-link evidence.
 - Quarterly update sending.
@@ -108,13 +115,13 @@ Not implemented:
 
 ## Correct Next Action
 
-The next ticket should be QL-007:
+The next ticket should be QL-008:
 
 ```text
-HMRC sandbox integration foundation.
+First HMRC sandbox quarterly update evidence run.
 ```
 
-Do not start QL-007 until explicitly instructed.
+Do not start QL-008 until explicitly instructed.
 
 ## Ticket Sequence
 
@@ -122,8 +129,8 @@ Do not start QL-007 until explicitly instructed.
 - `QL-004`: Polished app workspace and guided workflow shell.
 - `QL-005`: Spreadsheet Route B local workflow and evidence design.
 - `QL-006`: Auth, tenant, audit, secrets, and HMRC access architecture.
-- `QL-007`: HMRC sandbox integration foundation.
-- `QL-008`: First HMRC sandbox quarterly update evidence run.
+- `QL-007`: HMRC sandbox integration foundation - GPT_ACCEPTED after human review.
+- `QL-008`: First HMRC sandbox quarterly update evidence run - next active ticket, not started.
 
 ## Update Rule
 

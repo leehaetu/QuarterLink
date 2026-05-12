@@ -9,7 +9,7 @@ Phase 1: polished sandbox-readiness MVP.
 
 Bootstrap and project-pack cleanup are complete. QL-001 and the project-file consolidation have been accepted by the human and are recorded as committed through the QL-002 control sync.
 
-QL-006 has been accepted by human review. The next goal is QL-007: HMRC sandbox integration foundation.
+QL-007 has been accepted by human review. QL-008 is the next active ticket and must not start until explicitly instructed.
 
 ## Strategy
 
@@ -143,12 +143,20 @@ QL-006 was documentation/specification only. It did not implement product code, 
 
 ## QL-007 - HMRC Sandbox Integration Foundation
 
+Status: `GPT_ACCEPTED` after human review on 2026-05-12.
+
 Purpose:
 
 - Implement environment validation.
 - Add server-side HMRC API client scaffolding.
 - Add OAuth and fraud-prevention-header foundation if approved.
 - Keep local evidence and HMRC sandbox evidence clearly separated.
+
+QL-007 added server-side sandbox configuration validation, OAuth URL/request-construction scaffolding, fraud-prevention-header assembly, redaction helpers, focused tests, `.env.example`, and sandbox setup documentation.
+
+QL-007 did not perform HMRC API calls, production HMRC calls, persistent token storage, database migrations, spreadsheet parsing, real quarterly update sending, HMRC sandbox evidence generation, production evidence generation, billing, public website work, practice workflows, or final declaration/tax return work.
+
+QL-007 acceptance confirmed `npm audit --audit-level=moderate` still reports 2 moderate advisories from Next's bundled PostCSS dependency. No `npm audit fix --force` was applied because npm reports a potentially breaking fix path.
 
 Out of scope:
 
@@ -157,6 +165,8 @@ Out of scope:
 - Quarterly update sending unless explicitly approved.
 
 ## QL-008 - First HMRC Sandbox Quarterly Update Evidence Run
+
+Status: `DRAFT`; next active ticket, not started.
 
 Purpose:
 
