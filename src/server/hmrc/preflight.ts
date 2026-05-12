@@ -42,6 +42,9 @@ export interface Ql008PreflightInput {
   readonly env?: EnvironmentSource;
   readonly fraudPreventionInput?: FraudPreventionAssemblyInput;
   readonly evidenceOutputPath?: string;
+  readonly localCommandTimeoutMs?: number;
+  readonly progressLogger?: (message: string) => void;
+  readonly trackedSecretFileCheck?: () => Ql008TrackedSecretFileCheckResult;
 }
 
 export interface Ql008PreflightResult {
@@ -49,9 +52,15 @@ export interface Ql008PreflightResult {
   readonly generatedAt: string;
   readonly evidenceClassification: HmrcEvidenceClassification;
   readonly sandboxCallsAllowed: boolean;
+  readonly hmrcNetworkCallsAttempted: boolean;
   readonly officialEndpoints: readonly Ql008OfficialEndpoint[];
   readonly items: readonly Ql008PreflightItem[];
   readonly blockers: readonly string[];
+}
+
+export interface Ql008TrackedSecretFileCheckResult {
+  readonly ok: boolean;
+  readonly detail: string;
 }
 
 const REQUIRED_SCOPES = ["read:self-assessment", "write:self-assessment"] as const;
@@ -65,6 +74,8 @@ const PRODUCTION_ENV_KEYS = [
 ] as const;
 
 const SAFE_EVIDENCE_OUTPUT_PATH = ".agent/evidence/hmrc-sandbox/QL-008/";
+const DEFAULT_LOCAL_COMMAND_TIMEOUT_MS = 5_000;
+const HMRC_NETWORK_CALLS_ATTEMPTED_BY_PREFLIGHT = false;
 
 export const QL_008_OFFICIAL_ENDPOINTS: readonly Ql008OfficialEndpoint[] = [
   {
@@ -127,21 +138,42 @@ export function runQl008Preflight(
 ): Ql008PreflightResult {
   const env = input.env ?? process.env;
   const items: Ql008PreflightItem[] = [];
+  const logProgress = createProgressLogger(input.progressLogger);
+
+  logProgress("starting local readiness checks; HMRC network calls are disabled");
+
+  logProgress("validating sandbox configuration");
   const configResult = validateHmrcSandboxConfig(env);
 
   recordConfigItems(items, configResult);
+  logProgress("checking production endpoint guard");
   recordProductionBlock(items, env);
+  logProgress("checking documented endpoint versions and OAuth scopes");
   recordOfficialScopes(items, configResult);
+  logProgress("checking OAuth token/readiness presence without printing values");
   recordOAuthReadiness(items, env);
+  logProgress("checking taxpayer, business, and period context");
   recordSandboxContext(items, env);
+  logProgress("checking fraud-prevention input presence");
   recordFraudPreventionReadiness(items, input.fraudPreventionInput);
-  recordEvidenceSafety(items, input.evidenceOutputPath ?? SAFE_EVIDENCE_OUTPUT_PATH);
+  logProgress("checking evidence path, redaction, and tracked secret-file safety");
+  recordEvidenceSafety(
+    items,
+    input.evidenceOutputPath ?? SAFE_EVIDENCE_OUTPUT_PATH,
+    input.localCommandTimeoutMs ?? DEFAULT_LOCAL_COMMAND_TIMEOUT_MS,
+    input.trackedSecretFileCheck,
+  );
 
   const blockers = items
     .filter((item) => item.status === "block")
     .map((item) => `${item.check}: ${item.detail}`);
 
   const ok = blockers.length === 0;
+  logProgress(
+    ok
+      ? "completed with no blockers; sandbox calls are allowed by preflight gates"
+      : `completed with ${blockers.length} blocker(s); sandbox calls remain disabled`,
+  );
 
   return {
     ok,
@@ -151,6 +183,7 @@ export function runQl008Preflight(
       cameFromActualHmrcResponse: false,
     }),
     sandboxCallsAllowed: ok,
+    hmrcNetworkCallsAttempted: HMRC_NETWORK_CALLS_ATTEMPTED_BY_PREFLIGHT,
     officialEndpoints: QL_008_OFFICIAL_ENDPOINTS,
     items,
     blockers,
@@ -332,6 +365,8 @@ function recordFraudPreventionReadiness(
 function recordEvidenceSafety(
   items: Ql008PreflightItem[],
   evidenceOutputPath: string,
+  localCommandTimeoutMs: number,
+  trackedSecretFileCheck: (() => Ql008TrackedSecretFileCheckResult) | undefined,
 ): void {
   try {
     assertSandboxEvidenceOutputPath(evidenceOutputPath);
@@ -355,13 +390,26 @@ function recordEvidenceSafety(
       "QL-007 redaction helpers are available; QL-008 preflight output reports presence/status only.",
   });
 
+  const secretFileCheck =
+    trackedSecretFileCheck?.() ?? checkTrackedSecretFiles(localCommandTimeoutMs);
+
   items.push({
     check: "Secret file commit safety",
-    status: trackedSecretFilesAreAbsent() ? "pass" : "block",
-    detail: trackedSecretFilesAreAbsent()
-      ? "No tracked .env or secret input files are detected by the QL-008 preflight helper."
-      : "A tracked .env or secret input file was detected and must be removed before proceeding.",
+    status: secretFileCheck.ok ? "pass" : "block",
+    detail: secretFileCheck.detail,
   });
+}
+
+function createProgressLogger(
+  progressLogger: ((message: string) => void) | undefined,
+): (message: string) => void {
+  if (progressLogger === undefined) {
+    return () => undefined;
+  }
+
+  return (message) => {
+    progressLogger(`[QL-008 preflight] ${message}`);
+  };
 }
 
 function safeConfigIssueDetail(issue: HmrcValidationIssue): string {
@@ -382,7 +430,9 @@ function isPresent(value: string | undefined): value is string {
   );
 }
 
-function trackedSecretFilesAreAbsent(): boolean {
+function checkTrackedSecretFiles(
+  timeoutMs: number,
+): Ql008TrackedSecretFileCheckResult {
   const trackedSecretPaths = [
     ".env",
     ".env.local",
@@ -395,10 +445,30 @@ function trackedSecretFilesAreAbsent(): boolean {
     const output = execFileSync("git", ["ls-files", "--", ...trackedSecretPaths], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      timeout: timeoutMs,
     });
 
-    return output.trim().length === 0;
+    const trackedPaths = output
+      .split(/\r?\n/)
+      .map((path) => path.trim())
+      .filter(Boolean);
+
+    if (trackedPaths.length === 0) {
+      return {
+        ok: true,
+        detail:
+          "No tracked .env or secret input files are detected by the QL-008 preflight helper.",
+      };
+    }
+
+    return {
+      ok: false,
+      detail: `Tracked .env or secret input files are present and must be removed before proceeding: ${trackedPaths.join(", ")}.`,
+    };
   } catch {
-    return true;
+    return {
+      ok: false,
+      detail: `Could not complete tracked secret-file safety check within ${timeoutMs}ms. Preflight blocks rather than continuing with unverifiable secret-file state.`,
+    };
   }
 }

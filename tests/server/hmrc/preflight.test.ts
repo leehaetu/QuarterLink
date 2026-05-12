@@ -104,6 +104,7 @@ describe("QL-008 HMRC sandbox preflight", () => {
 
     assert.equal(result.ok, true);
     assert.equal(result.sandboxCallsAllowed, true);
+    assert.equal(result.hmrcNetworkCallsAttempted, false);
     assert.deepEqual(
       result.officialEndpoints.map((endpoint) => `${endpoint.api} ${endpoint.version}`),
       QL_008_OFFICIAL_ENDPOINTS.map(
@@ -130,5 +131,42 @@ describe("QL-008 HMRC sandbox preflight", () => {
       "/individuals/business/self-employment/{nino}/{businessId}/cumulative/{taxYear}",
     );
     assert(cumulativeEndpoint?.note?.includes("2025-26 onwards"));
+  });
+
+  test("logs redacted progress without making HMRC network calls", () => {
+    const progressMessages: string[] = [];
+
+    const result = runQl008Preflight({
+      env: validEnv,
+      fraudPreventionInput: fraudInput(),
+      progressLogger: (message) => progressMessages.push(message),
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.hmrcNetworkCallsAttempted, false);
+    assert(progressMessages.length > 0);
+    assert(progressMessages.some((message) => message.includes("HMRC network calls are disabled")));
+    assert(!progressMessages.join("\n").includes(validEnv.HMRC_SANDBOX_CLIENT_SECRET));
+    assert(!progressMessages.join("\n").includes(validEnv.HMRC_SANDBOX_ACCESS_TOKEN));
+  });
+
+  test("blocks if tracked secret-file safety cannot be verified", () => {
+    const result = runQl008Preflight({
+      env: validEnv,
+      fraudPreventionInput: fraudInput(),
+      trackedSecretFileCheck: () => ({
+        ok: false,
+        detail:
+          "Could not complete tracked secret-file safety check within 1ms.",
+      }),
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.sandboxCallsAllowed, false);
+    assert(
+      result.blockers.some((blocker) =>
+        blocker.includes("tracked secret-file safety check"),
+      ),
+    );
   });
 });
