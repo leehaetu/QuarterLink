@@ -112,12 +112,23 @@ describe("QL-008 HMRC sandbox preflight", () => {
     );
   });
 
-  test("records current official versions and the 2025-26 endpoint caveat", () => {
-    const selfEmploymentEndpoint = QL_008_OFFICIAL_ENDPOINTS.find(
-      (endpoint) => endpoint.api === "Self Employment Business (MTD)",
+  test("records current official versions and the 2025-26 cumulative endpoint", () => {
+    const periodSummaryEndpoint = QL_008_OFFICIAL_ENDPOINTS.find(
+      (endpoint) => endpoint.api === "Self Employment Business (MTD) - period summary",
+    );
+    const cumulativeEndpoint = QL_008_OFFICIAL_ENDPOINTS.find(
+      (endpoint) =>
+        endpoint.api ===
+        "Self Employment Business (MTD) - cumulative period summary",
     );
 
-    assert.equal(selfEmploymentEndpoint?.version, "5.0");
-    assert(selfEmploymentEndpoint?.note?.includes("2025-26"));
+    assert.equal(periodSummaryEndpoint?.version, "5.0");
+    assert(periodSummaryEndpoint?.note?.includes("2024-25 or earlier"));
+    assert.equal(cumulativeEndpoint?.method, "PUT");
+    assert.equal(
+      cumulativeEndpoint?.path,
+      "/individuals/business/self-employment/{nino}/{businessId}/cumulative/{taxYear}",
+    );
+    assert(cumulativeEndpoint?.note?.includes("2025-26 onwards"));
   });
 });

@@ -22,6 +22,8 @@ Checked on 2026-05-12:
 - HMRC fraud prevention guidance: `https://developer.service.hmrc.gov.uk/guides/fraud-prevention/`
 - HMRC web application via server fraud-prevention method: `https://developer.service.hmrc.gov.uk/guides/fraud-prevention/connection-method/web-app-via-server/`
 - HMRC Test Fraud Prevention Headers API: `https://developer.service.hmrc.gov.uk/guides/fraud-prevention/test-api/`
+- HMRC Income Tax MTD changelog: `https://github.com/hmrc/income-tax-mtd-changelog`
+- HMRC Making Tax Digital for Income Tax service guide, making updates during the tax year: `https://developer.service.hmrc.gov.uk/guides/income-tax-mtd-end-to-end-service-guide/documentation/make-updates-during-tax-year.html`
 - GOV.UK digital records guidance: `https://www.gov.uk/guidance/use-making-tax-digital-for-income-tax/create-digital-records`
 - GOV.UK quarterly updates guidance: `https://www.gov.uk/guidance/use-making-tax-digital-for-income-tax/send-quarterly-updates`
 
@@ -41,6 +43,20 @@ Use `.env.local` for local development. It is ignored by git. Use the deployment
 | `HMRC_SANDBOX_CLIENT_SECRET` | QL-007 / QL-008 | Sandbox application client secret from HMRC Developer Hub. | Never. |
 | `HMRC_SANDBOX_REDIRECT_URI` | QL-007 / QL-008 | Redirect URI registered on the HMRC sandbox application. Local HTTP localhost is allowed only for local development. | No. |
 | `HMRC_SANDBOX_SCOPES` | QL-007 / QL-008 | Space-separated sandbox scopes for the approved first path. Exact scopes need human verification before QL-008. | No secret, but verify before use. |
+
+QL-008 blocker-resolution update on 2026-05-12: the exact scopes required for the first retry are `read:self-assessment write:self-assessment` for Business Details, Obligations, and Self Employment Business. The Test Fraud Prevention Headers API is application-restricted and needs an OAuth bearer token from the sandbox application credentials flow, not a user-restricted taxpayer consent token.
+
+The first retry must also provide these run-only sandbox context values outside source control:
+
+| Variable | Purpose | Commit real value? |
+| --- | --- | --- |
+| `HMRC_SANDBOX_ACCESS_TOKEN` | Server-side user-restricted sandbox OAuth access token for the test user. | Never. |
+| `HMRC_SANDBOX_TEST_USER_READY` | Explicit operator confirmation that the sandbox test user and authority setup are ready. | No. |
+| `HMRC_SANDBOX_TEST_NINO` | Sandbox test user's National Insurance number. | No. |
+| `HMRC_SANDBOX_SELF_EMPLOYMENT_BUSINESS_ID` | Self-employment business ID confirmed through Business Details or an official sandbox scenario. | No. |
+| `HMRC_SANDBOX_TAX_YEAR` | Intended retry tax year. Use `2025-26` or later only with the cumulative endpoint. | No. |
+| `HMRC_SANDBOX_PERIOD_START_DATE` | Intended quarterly update period start date. | No. |
+| `HMRC_SANDBOX_PERIOD_END_DATE` | Intended quarterly update period end date. | No. |
 
 QL-007 deliberately rejects `HMRC_PRODUCTION_*` variables if they are present in the sandbox config source. Production HMRC calls are outside this ticket.
 
@@ -87,6 +103,54 @@ The helper blocks when required data is missing or invalid. In particular:
 - placeholder strings such as `null` or `undefined` are rejected.
 
 Redacted helper output exposes header presence and safe labels, not raw device IDs, public IPs, forwarded chains, tokens, or secrets.
+
+Before the QL-008 retry, real `WEB_APP_VIA_SERVER` values must exist for every required header:
+
+- `Gov-Client-Connection-Method`
+- `Gov-Client-Browser-JS-User-Agent`
+- `Gov-Client-Device-ID`
+- `Gov-Client-Multi-Factor`, unless HMRC has explicitly accepted a missing-data approach
+- `Gov-Client-Public-IP`
+- `Gov-Client-Public-IP-Timestamp`
+- `Gov-Client-Public-Port`
+- `Gov-Client-Screens`
+- `Gov-Client-Timezone`
+- `Gov-Client-User-IDs`
+- `Gov-Client-Window-Size`
+- `Gov-Vendor-Forwarded`
+- `Gov-Vendor-License-IDs`, unless HMRC has explicitly accepted a missing-data approach
+- `Gov-Vendor-Product-Name`
+- `Gov-Vendor-Public-IP`
+- `Gov-Vendor-Version`
+
+The Test Fraud Prevention Headers API must validate the assembled `Gov-*` headers before any Income Tax MTD sandbox call.
+
+## QL-008 Endpoint Decision
+
+Checked on 2026-05-12 from HMRC Developer Hub OpenAPI definitions:
+
+- Business Details (MTD) 2.0: `GET /individuals/business/details/{nino}/list`, scope `read:self-assessment`.
+- Obligations (MTD) 3.0: `GET /obligations/details/{nino}/income-and-expenditure`, scope `read:self-assessment`.
+- Self Employment Business (MTD) 5.0 for 2024-25 or earlier: `POST /individuals/business/self-employment/{nino}/{businessId}/period`, scope `write:self-assessment`.
+- Self Employment Business (MTD) 5.0 for 2025-26 onwards: `PUT /individuals/business/self-employment/{nino}/{businessId}/cumulative/{taxYear}`, scope `write:self-assessment`; `GET` on the same path uses `read:self-assessment`.
+
+The first QL-008 retry should use the 2025-26 onward cumulative endpoint only if the selected sandbox test user, obligations response, and fixture period are all for tax year 2025-26 or later. If the operator intentionally chooses a 2024-25 sandbox fixture, the retry must use the 2024-25 period summary endpoint instead.
+
+The HMRC Income Tax MTD changelog supports this decision. Entries relied on:
+
+| Date | API | Change summary used for QL-008 |
+| --- | --- | --- |
+| 24 July 2024 | Self Employment Business API v3.0 | Period summary endpoints no longer accept data for tax years 2025-26 onwards. |
+| 11 December 2024 | Self Employment Business API v4.0 sandbox | Self-employment cumulative period summary endpoints were created for tax years 2025-26 onwards; period summary endpoints no longer accept data for tax years 2025-26 onwards. |
+| 11 December 2024 | Obligations API v3.0 sandbox | Added `CUMULATIVE` `Gov-Test-Scenario` and cumulative sandbox dates for income and expenditure obligations. |
+| 24 March 2025 | Self Employment Business API v5.0 sandbox | Version 5.0 was added in sandbox and includes the Self-Employment Cumulative Period Summary endpoint family. |
+| 14 April 2025 | Self Employment Business API v4.0 production | The same 2025-26 onward cumulative endpoint direction was promoted to production for v4.0. |
+| 30 May 2025 | Self Employment Business API v4.0 and v5.0 sandbox | `STATEFUL` sandbox scenario support for Create or Amend a Self-Employment Cumulative Period Summary is limited to standard cumulative quarterly updates where no `commencementDate` is present. |
+| 24 March 2026 | Self Employment Business API v5.0 production | Version 5.0 was updated in production and still includes Create and Amend a Self-Employment Cumulative Period Summary; the entry changes that endpoint's success code from `200` to `204`. |
+
+Later v5.0 entries checked on 22 April 2026 and 12 May 2026 relate to annual-submission field deprecations and do not change the quarterly update path.
+
+This setup remains Making Tax Digital for Income Tax bridging-only readiness. It does not add bookkeeping, final declaration, production access, spreadsheet parsing, authentication, database storage, or HMRC API calls.
 
 ## Evidence Separation
 

@@ -88,7 +88,7 @@ export const QL_008_OFFICIAL_ENDPOINTS: readonly Ql008OfficialEndpoint[] = [
       "https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/obligations-api/3.0",
   },
   {
-    api: "Self Employment Business (MTD)",
+    api: "Self Employment Business (MTD) - period summary",
     version: "5.0",
     method: "POST",
     path: "/individuals/business/self-employment/{nino}/{businessId}/period",
@@ -96,7 +96,18 @@ export const QL_008_OFFICIAL_ENDPOINTS: readonly Ql008OfficialEndpoint[] = [
     scopes: ["write:self-assessment"],
     sourceUrl:
       "https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/self-employment-business-api/5.0",
-    note: "The create period summary endpoint states it can only be used for tax year 2024-25 or earlier and points to cumulative submission for 2025-26 onwards.",
+    note: "This endpoint can only be used for submissions for tax year 2024-25 or earlier.",
+  },
+  {
+    api: "Self Employment Business (MTD) - cumulative period summary",
+    version: "5.0",
+    method: "PUT",
+    path: "/individuals/business/self-employment/{nino}/{businessId}/cumulative/{taxYear}",
+    acceptHeader: "application/vnd.hmrc.5.0+json",
+    scopes: ["write:self-assessment"],
+    sourceUrl:
+      "https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/self-employment-business-api/5.0",
+    note: "Use this current endpoint for self-employment cumulative submissions for tax year 2025-26 onwards.",
   },
   {
     api: "Test Fraud Prevention Headers",

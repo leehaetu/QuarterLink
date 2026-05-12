@@ -73,7 +73,7 @@ QL-008 ran the preflight gate and stopped before any HMRC sandbox call. No HMRC 
 | Area | QL-008 result |
 | --- | --- |
 | Current API versions | Verified for this run: Business Details (MTD) 2.0, Obligations (MTD) 3.0, Self Employment Business (MTD) 5.0, Test Fraud Prevention Headers 1.0. |
-| Endpoint caveat | Self Employment Business 5.0 create period summary states it is for tax year 2024-25 or earlier and points to cumulative submission for 2025-26 onwards. The exact first evidence endpoint must be confirmed before retrying. |
+| Endpoint caveat | Resolved for retry planning: Self Employment Business 5.0 period summary is for tax year 2024-25 or earlier; HMRC Developer Hub and the Income Tax MTD changelog point to the cumulative period summary endpoint for 2025-26 onwards. The sandbox tax year and fixture must still be confirmed before any call. |
 | Sandbox config | Blocked: required HMRC sandbox environment variables were not available to the preflight process. |
 | Sandbox credentials | Blocked: no sandbox client ID/secret was available to the preflight process. No secret value was displayed. |
 | OAuth/test user | Blocked: no server-side sandbox access token, test-user authority confirmation, or OAuth readiness evidence was available. |
@@ -81,6 +81,20 @@ QL-008 ran the preflight gate and stopped before any HMRC sandbox call. No HMRC 
 | Test Fraud Prevention Headers API | Not called because the fraud-prevention-header preflight failed. |
 | Business Details / Obligations / Self Employment calls | Not called because the preflight failed. |
 | Evidence classification | Local/demo blocked readiness report only; not HMRC sandbox evidence and not production evidence. |
+
+QL-008 blocker-resolution note on 2026-05-12: if the first retry targets tax year `2025-26` or later, prepare `PUT /individuals/business/self-employment/{nino}/{businessId}/cumulative/{taxYear}` from Self Employment Business (MTD) API 5.0. Use `POST /individuals/business/self-employment/{nino}/{businessId}/period` only for an explicitly selected `2024-25` or earlier sandbox fixture. This remains Making Tax Digital for Income Tax bridging-only readiness and does not add final declaration, bookkeeping, production access, auth, database storage, or HMRC API calls.
+
+HMRC changelog entries relied on for that endpoint decision:
+
+| Date | API | Change summary used for QL-008 |
+| --- | --- | --- |
+| 24 July 2024 | Self Employment Business API v3.0 | Period summary endpoints no longer accept data for tax years 2025-26 onwards. |
+| 11 December 2024 | Self Employment Business API v4.0 sandbox | Self-employment cumulative period summary endpoints were created for tax years 2025-26 onwards; period summary endpoints no longer accept data for tax years 2025-26 onwards. |
+| 11 December 2024 | Obligations API v3.0 sandbox | Added `CUMULATIVE` `Gov-Test-Scenario` and cumulative sandbox dates for income and expenditure obligations. |
+| 24 March 2025 | Self Employment Business API v5.0 sandbox | Version 5.0 was added in sandbox and includes the Self-Employment Cumulative Period Summary endpoint family. |
+| 14 April 2025 | Self Employment Business API v4.0 production | The same 2025-26 onward cumulative endpoint direction was promoted to production for v4.0. |
+| 30 May 2025 | Self Employment Business API v4.0 and v5.0 sandbox | `STATEFUL` sandbox scenario support for Create or Amend a Self-Employment Cumulative Period Summary is limited to standard cumulative quarterly updates where no `commencementDate` is present. |
+| 24 March 2026 | Self Employment Business API v5.0 production | Version 5.0 was updated in production and still includes Create and Amend a Self-Employment Cumulative Period Summary; the entry changes that endpoint's success code from `200` to `204`. |
 
 ## Production-Access Blockers
 
