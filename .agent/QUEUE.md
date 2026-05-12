@@ -8,4 +8,5 @@
 | QL-005 | Spreadsheet Route B local workflow and evidence design | GPT_ACCEPTED |
 | QL-006 | Auth, tenant, audit, secrets, and HMRC access architecture | GPT_ACCEPTED |
 | QL-007 | HMRC sandbox integration foundation | GPT_ACCEPTED |
-| QL-008 | First HMRC sandbox quarterly update evidence run | DRAFT |
+| QL-008 | First HMRC sandbox quarterly update evidence run | GPT_ACCEPTED |
+| QL-009 | Resolve QL-008 sandbox readiness blockers before retrying HMRC sandbox submission | DRAFT |

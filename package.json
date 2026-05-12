@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "hmrc:sandbox-evidence:preflight": "tsx scripts/hmrc-sandbox-evidence-run.ts",
     "test": "node --import tsx --test tests/server/hmrc/*.test.ts"
   },
   "dependencies": {

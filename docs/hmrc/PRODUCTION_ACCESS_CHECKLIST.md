@@ -64,6 +64,24 @@ Official guidance checked on 2026-05-12:
 | Recognition claims | Do not claim HMRC recognition unless and until the required HMRC process has been completed and evidenced. | Blocked |
 | HMRC logos | Do not use HMRC logos or government-style naming unless explicitly allowed by current HMRC rules. | Blocked |
 
+## QL-008 Sandbox Readiness Update
+
+Checked on 2026-05-12 during QL-008.
+
+QL-008 ran the preflight gate and stopped before any HMRC sandbox call. No HMRC sandbox evidence was created.
+
+| Area | QL-008 result |
+| --- | --- |
+| Current API versions | Verified for this run: Business Details (MTD) 2.0, Obligations (MTD) 3.0, Self Employment Business (MTD) 5.0, Test Fraud Prevention Headers 1.0. |
+| Endpoint caveat | Self Employment Business 5.0 create period summary states it is for tax year 2024-25 or earlier and points to cumulative submission for 2025-26 onwards. The exact first evidence endpoint must be confirmed before retrying. |
+| Sandbox config | Blocked: required HMRC sandbox environment variables were not available to the preflight process. |
+| Sandbox credentials | Blocked: no sandbox client ID/secret was available to the preflight process. No secret value was displayed. |
+| OAuth/test user | Blocked: no server-side sandbox access token, test-user authority confirmation, or OAuth readiness evidence was available. |
+| Fraud prevention headers | Blocked: no real `WEB_APP_VIA_SERVER` client/server fraud-prevention inputs were available. |
+| Test Fraud Prevention Headers API | Not called because the fraud-prevention-header preflight failed. |
+| Business Details / Obligations / Self Employment calls | Not called because the preflight failed. |
+| Evidence classification | Local/demo blocked readiness report only; not HMRC sandbox evidence and not production evidence. |
+
 ## Production-Access Blockers
 
 Do not apply for production credentials while any of these remain true:

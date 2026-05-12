@@ -1,9 +1,9 @@
 Current phase: Sprint 0
 Current gate: G1 — App skeleton and source-of-truth control closed
 Current ticket: QL-008
-Current status: DRAFT
+Current status: GPT_ACCEPTED
 
-Last completed ticket: QL-007
+Last completed ticket: QL-008
 Last completed status: GPT_ACCEPTED after human review on 2026-05-12
 
 QL-003 was accepted by human review on 2026-05-12.
@@ -21,7 +21,9 @@ QL-007 added a limited server-side HMRC sandbox foundation: environment validati
 QL-007 did not implement HMRC API network calls, production HMRC calls, persistent token storage, database migrations, spreadsheet parsing, real quarterly update sending, final declaration or tax return features, HMRC sandbox evidence, or production evidence.
 QL-007 was accepted by human review on 2026-05-12.
 QL-007 acceptance confirmed `npm audit --audit-level=moderate` still reports 2 moderate advisories from Next's bundled PostCSS dependency. No `npm audit fix --force` was applied because npm reports a potentially breaking fix path.
-QL-008 is now the next active ticket, but it has not been started.
+QL-008 Codex run completed on 2026-05-12 as a blocked readiness report. The required preflight gate ran and blocked before any HMRC sandbox call because sandbox config, user-restricted OAuth/test-user context, taxpayer/business/period context, and real fraud-prevention inputs were not available. No HMRC sandbox evidence, production evidence, product UI change, auth, database, spreadsheet parsing, billing, practice workflow, final declaration, or tax return feature was created.
+QL-008 was accepted by human review on 2026-05-12 as a blocked readiness run, not as a successful HMRC sandbox evidence run. No HMRC sandbox calls were made. Evidence classification is local/demo blocked readiness only. Self Employment Business 5.0 period summary appears limited to tax year 2024-25 or earlier; the 2025-26 onward cumulative submission path needs human/API confirmation before retrying.
+Next recommended ticket: QL-009 — Resolve QL-008 sandbox readiness blockers before retrying HMRC sandbox submission. QL-009 has not been started.
 Codex did not mark any ticket GPT_ACCEPTED without human instruction.
 
 Allowed statuses:
