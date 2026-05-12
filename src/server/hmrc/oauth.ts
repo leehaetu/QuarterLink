@@ -11,6 +11,21 @@ export const HMRC_SANDBOX_OAUTH_STATE_KEY = "HMRC_SANDBOX_OAUTH_STATE";
 export const HMRC_SANDBOX_TEST_USER_TYPE_KEY = "HMRC_SANDBOX_TEST_USER_TYPE";
 export const HMRC_SANDBOX_OAUTH_SHOW_TOKENS_KEY =
   "HMRC_SANDBOX_OAUTH_SHOW_TOKENS";
+export const HMRC_SANDBOX_REQUIRED_REDIRECT_URI =
+  "http://localhost:3000/api/hmrc/oauth/callback";
+
+const REQUIRED_LOCAL_OAUTH_ENV_KEYS = [
+  "APP_ENV",
+  "HMRC_ENV",
+  "HMRC_SANDBOX_API_BASE_URL",
+  "HMRC_SANDBOX_AUTH_BASE_URL",
+  "HMRC_SANDBOX_CLIENT_ID",
+  "HMRC_SANDBOX_CLIENT_SECRET",
+  "HMRC_SANDBOX_REDIRECT_URI",
+  "HMRC_SANDBOX_SCOPES",
+  HMRC_SANDBOX_TEST_USER_TYPE_KEY,
+  HMRC_SANDBOX_OAUTH_STATE_KEY,
+] as const;
 
 export interface HmrcSandboxOAuthTokenResponse {
   readonly accessToken: string;
@@ -26,6 +41,20 @@ export interface HmrcSandboxOAuthTokenSummary {
   readonly scope?: string;
   readonly hasAccessToken: boolean;
   readonly hasRefreshToken: boolean;
+}
+
+export interface HmrcSandboxOAuthUiState {
+  readonly appEnvironment: string;
+  readonly hmrcEnvironment: string;
+  readonly redirectUri: string;
+  readonly startPath: string;
+  readonly callbackPath: string;
+  readonly requiredRedirectUri: string;
+  readonly isLocalOrSandboxMode: boolean;
+  readonly canStartOAuth: boolean;
+  readonly missingEnvVars: readonly string[];
+  readonly invalidEnvMessages: readonly string[];
+  readonly tokenDisplayEnabled: boolean;
 }
 
 export class HmrcSandboxOAuthError extends Error {
@@ -52,6 +81,71 @@ export function buildSandboxOAuthAuthorisationUrl(
   assertIndividualSandboxTestUser(source);
 
   return new HmrcSandboxClient(config).buildOAuthAuthorisationUrl({ state });
+}
+
+export function getSandboxOAuthUiState(
+  source: EnvironmentSource = process.env,
+): HmrcSandboxOAuthUiState {
+  const missingEnvVars = REQUIRED_LOCAL_OAUTH_ENV_KEYS.filter(
+    (key) => !isPresent(source[key]),
+  );
+  const invalidEnvMessages: string[] = [];
+  const appEnvironment = source.APP_ENV?.trim() ?? "";
+  const hmrcEnvironment = source.HMRC_ENV?.trim() ?? "";
+  const isLocalOrSandboxMode =
+    appEnvironment === "local" || appEnvironment === "sandbox";
+
+  if (isPresent(appEnvironment) && !isLocalOrSandboxMode) {
+    invalidEnvMessages.push("APP_ENV must be local or sandbox for this flow.");
+  }
+
+  if (isPresent(hmrcEnvironment) && hmrcEnvironment !== "sandbox") {
+    invalidEnvMessages.push("HMRC_ENV must be sandbox for this flow.");
+  }
+
+  if (
+    isPresent(source.HMRC_SANDBOX_REDIRECT_URI) &&
+    source.HMRC_SANDBOX_REDIRECT_URI.trim() !== HMRC_SANDBOX_REQUIRED_REDIRECT_URI
+  ) {
+    invalidEnvMessages.push(
+      `HMRC_SANDBOX_REDIRECT_URI must be ${HMRC_SANDBOX_REQUIRED_REDIRECT_URI}.`,
+    );
+  }
+
+  if (
+    isPresent(source[HMRC_SANDBOX_TEST_USER_TYPE_KEY]) &&
+    source[HMRC_SANDBOX_TEST_USER_TYPE_KEY]?.trim().toLowerCase() !== "individual"
+  ) {
+    invalidEnvMessages.push(
+      `${HMRC_SANDBOX_TEST_USER_TYPE_KEY} must be individual.`,
+    );
+  }
+
+  if (
+    isPresent(source[HMRC_SANDBOX_OAUTH_STATE_KEY]) &&
+    (source[HMRC_SANDBOX_OAUTH_STATE_KEY]?.trim().length ?? 0) < 16
+  ) {
+    invalidEnvMessages.push(
+      `${HMRC_SANDBOX_OAUTH_STATE_KEY} must be at least 16 characters.`,
+    );
+  }
+
+  return {
+    appEnvironment: appEnvironment || "not set",
+    hmrcEnvironment: hmrcEnvironment || "not set",
+    redirectUri: source.HMRC_SANDBOX_REDIRECT_URI?.trim() || "not set",
+    startPath: HMRC_SANDBOX_OAUTH_START_PATH,
+    callbackPath: HMRC_SANDBOX_OAUTH_CALLBACK_PATH,
+    requiredRedirectUri: HMRC_SANDBOX_REQUIRED_REDIRECT_URI,
+    isLocalOrSandboxMode,
+    canStartOAuth:
+      isLocalOrSandboxMode &&
+      missingEnvVars.length === 0 &&
+      invalidEnvMessages.length === 0,
+    missingEnvVars,
+    invalidEnvMessages,
+    tokenDisplayEnabled: sandboxOAuthTokenDisplayEnabled(source),
+  };
 }
 
 export async function exchangeSandboxOAuthCode(
@@ -157,6 +251,20 @@ function requireOAuthState(source: EnvironmentSource): string {
   }
 
   return state;
+}
+
+function isPresent(value: string | undefined): value is string {
+  if (value === undefined) {
+    return false;
+  }
+
+  const trimmedValue = value.trim();
+
+  return (
+    trimmedValue.length > 0 &&
+    trimmedValue.toLowerCase() !== "null" &&
+    trimmedValue.toLowerCase() !== "undefined"
+  );
 }
 
 async function readJson(

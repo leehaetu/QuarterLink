@@ -3,8 +3,10 @@ import { describe, test } from "node:test";
 import {
   buildSandboxOAuthAuthorisationUrl,
   exchangeSandboxOAuthCode,
+  getSandboxOAuthUiState,
   HMRC_SANDBOX_API_BASE_URL,
   HMRC_SANDBOX_AUTH_BASE_URL,
+  HMRC_SANDBOX_REQUIRED_REDIRECT_URI,
   HmrcSandboxOAuthError,
   summariseSandboxOAuthToken,
 } from "../../../src/server/hmrc";
@@ -51,6 +53,32 @@ describe("HMRC sandbox OAuth readiness", () => {
         }),
       HmrcSandboxOAuthError,
     );
+  });
+
+  test("reports safe UI readiness without exposing secret values", () => {
+    const state = getSandboxOAuthUiState(oauthEnv);
+
+    assert.equal(state.canStartOAuth, true);
+    assert.equal(state.requiredRedirectUri, HMRC_SANDBOX_REQUIRED_REDIRECT_URI);
+    assert.deepEqual(state.missingEnvVars, []);
+    assert(!JSON.stringify(state).includes("sandbox-client-secret"));
+  });
+
+  test("reports missing local env vars for the app connection card", () => {
+    const state = getSandboxOAuthUiState({
+      APP_ENV: "local",
+      HMRC_ENV: "sandbox",
+      HMRC_SANDBOX_API_BASE_URL,
+      HMRC_SANDBOX_AUTH_BASE_URL,
+      HMRC_SANDBOX_REDIRECT_URI: HMRC_SANDBOX_REQUIRED_REDIRECT_URI,
+      HMRC_SANDBOX_SCOPES: "read:self-assessment write:self-assessment",
+      HMRC_SANDBOX_TEST_USER_TYPE: "individual",
+    });
+
+    assert.equal(state.canStartOAuth, false);
+    assert(state.missingEnvVars.includes("HMRC_SANDBOX_CLIENT_ID"));
+    assert(state.missingEnvVars.includes("HMRC_SANDBOX_CLIENT_SECRET"));
+    assert(state.missingEnvVars.includes("HMRC_SANDBOX_OAUTH_STATE"));
   });
 
   test("exchanges an authorisation code against the sandbox token endpoint", async () => {

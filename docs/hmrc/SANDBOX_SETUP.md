@@ -71,7 +71,15 @@ The current application UI still shows local/demo evidence only. It must not be 
 
 ## QL-008 OAuth Readiness
 
-The local OAuth readiness flow is sandbox-only and uses the individual sandbox test user path. It does not add product authentication, database storage, production endpoints, product UI, Business Details calls, Obligations calls, Self Employment Business calls, or Test Fraud Prevention Headers calls.
+The local OAuth readiness flow is sandbox-only and uses the individual sandbox test user path. It does not add product authentication, database storage, production endpoints, Business Details calls, Obligations calls, Self Employment Business calls, or Test Fraud Prevention Headers calls.
+
+The local app now shows a visible HMRC sandbox connection card at:
+
+`http://localhost:3000`
+
+Use the card's `Connect to HMRC Sandbox` button when local configuration is complete. The button links to the existing sandbox OAuth start route:
+
+`http://localhost:3000/api/hmrc/oauth/start`
 
 Register this exact redirect URI on the HMRC sandbox application:
 
@@ -97,7 +105,7 @@ Use `HMRC_SANDBOX_OAUTH_SHOW_TOKENS=true` only while obtaining the local sandbox
 
 Start the app locally and open:
 
-`http://localhost:3000/api/hmrc/oauth/start`
+`http://localhost:3000`
 
 Sign in with an HMRC individual sandbox test user, not an organisation test user. After the callback returns an access token in the local browser response, set it only in the local shell as:
 
@@ -107,6 +115,8 @@ HMRC_SANDBOX_TEST_USER_READY=true
 ```
 
 Then rerun the QL-008 preflight. The preflight still requires taxpayer/business/period context and real fraud-prevention inputs before any Income Tax MTD sandbox call is safe.
+
+The callback page is a local-only success/failure screen. It states that no HMRC submission was made, gives the preflight command, and either hides token display or shows the access token only when `HMRC_SANDBOX_OAUTH_SHOW_TOKENS=true` is set locally. It must not be copied into chat, docs, commits, logs, or run reports.
 
 ## Server Boundary
 

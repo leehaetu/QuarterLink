@@ -73,6 +73,14 @@ npm run hmrc:sandbox-evidence:preflight
 
 The command emits redacted JSON. Exit code `2` means the preflight blocked the run before any HMRC sandbox call.
 
+After completing local sandbox OAuth from the web app, rerun the preflight with local-only env loaded:
+
+```sh
+set -a; source .env.local; set +a; npm run hmrc:sandbox-evidence:preflight
+```
+
+The web app connection card starts OAuth from `http://localhost:3000` and uses `http://localhost:3000/api/hmrc/oauth/callback` as the HMRC sandbox redirect URI. OAuth completion alone is not HMRC sandbox evidence and does not make Business Details, Obligations, Self Employment Business, or Test Fraud Prevention Headers calls safe.
+
 ## QL-008 Preflight Result
 
 Result on 2026-05-12: blocked.

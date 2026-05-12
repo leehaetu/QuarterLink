@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { HmrcSandboxOAuthUiState } from "@/server/hmrc";
 
 type RouteBStep = {
   id: string;
@@ -169,8 +170,8 @@ const boundaryCards = [
     body: "This workflow uses local React state. It does not store data and does not create HMRC sandbox evidence.",
   },
   {
-    title: "No HMRC connection",
-    body: "OAuth, HMRC APIs, obligations, and submission endpoints are deliberately absent.",
+    title: "Sandbox connection only",
+    body: "The HMRC connection step can start sandbox OAuth locally. It does not enable production or send quarterly updates.",
   },
   {
     title: "Read-only figures",
@@ -178,7 +179,23 @@ const boundaryCards = [
   },
 ] as const;
 
-export function WorkspaceShell() {
+const hmrcRemainingBlockers = [
+  "Access token must be kept local only.",
+  "Self-employment business ID still needed.",
+  "Tax year still needed.",
+  "Period start and end dates still needed.",
+  "WEB_APP_VIA_SERVER fraud-prevention inputs still needed.",
+  "Test Fraud Prevention Headers validation still needed.",
+] as const;
+
+const preflightCommand =
+  "set -a; source .env.local; set +a; npm run hmrc:sandbox-evidence:preflight";
+
+interface WorkspaceShellProps {
+  readonly hmrcSandboxOAuth: HmrcSandboxOAuthUiState;
+}
+
+export function WorkspaceShell({ hmrcSandboxOAuth }: WorkspaceShellProps) {
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const activeStep = routeBSteps[activeStepIndex];
   const stepCount = useMemo(
@@ -262,9 +279,9 @@ export function WorkspaceShell() {
               </div>
 
               <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 xl:w-80">
-                This page is not connected to HMRC. It does not upload
-                spreadsheets, parse files, persist data, or send quarterly
-                updates.
+                This page can start sandbox OAuth only. It does not upload
+                spreadsheets, parse files, persist data, call HMRC APIs, or send
+                quarterly updates.
               </div>
             </div>
           </header>
@@ -475,6 +492,130 @@ export function WorkspaceShell() {
 
             <aside className="space-y-6">
               <section
+                aria-labelledby="hmrc-sandbox-heading"
+                className="rounded-lg border border-teal-700 bg-white p-5 shadow-sm shadow-slate-200/50"
+              >
+                <div className="flex flex-col gap-3 border-b border-slate-200 pb-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-normal text-teal-800">
+                      QL-008 sandbox only
+                    </p>
+                    <h2
+                      id="hmrc-sandbox-heading"
+                      className="mt-1 text-base font-semibold text-slate-950"
+                    >
+                      HMRC sandbox connection
+                    </h2>
+                  </div>
+                  <span
+                    className={`inline-flex w-fit rounded-md px-3 py-1 text-xs font-semibold ${
+                      hmrcSandboxOAuth.canStartOAuth
+                        ? "bg-teal-100 text-teal-900"
+                        : "bg-amber-100 text-amber-950"
+                    }`}
+                  >
+                    {hmrcSandboxOAuth.canStartOAuth
+                      ? "Ready to start OAuth"
+                      : "Local setup needed"}
+                  </span>
+                </div>
+
+                <p className="mt-4 text-sm leading-6 text-slate-700">
+                  This connects to the HMRC sandbox authorisation journey for an
+                  individual sandbox test user. It is not production, no HMRC
+                  submission has been made, and OAuth gives an access token
+                  only.
+                </p>
+
+                <dl className="mt-4 grid gap-2 text-sm">
+                  <div className="rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-2">
+                    <dt className="text-xs font-semibold uppercase tracking-normal text-slate-500">
+                      Redirect URI
+                    </dt>
+                    <dd className="mt-1 break-all font-mono text-xs text-slate-800">
+                      {hmrcSandboxOAuth.requiredRedirectUri}
+                    </dd>
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-2">
+                    <dt className="text-xs font-semibold uppercase tracking-normal text-slate-500">
+                      Individual test user
+                    </dt>
+                    <dd className="mt-1 text-sm text-slate-800">
+                      User ID 713919258798, NINO NX995584B
+                    </dd>
+                  </div>
+                </dl>
+
+                {hmrcSandboxOAuth.canStartOAuth ? (
+                  <a
+                    href={hmrcSandboxOAuth.startPath}
+                    className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-700 focus:ring-offset-2"
+                  >
+                    Connect to HMRC Sandbox
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="mt-4 w-full cursor-not-allowed rounded-md bg-slate-300 px-4 py-2 text-sm font-semibold text-slate-600"
+                  >
+                    Connect to HMRC Sandbox
+                  </button>
+                )}
+
+                {!hmrcSandboxOAuth.isLocalOrSandboxMode ? (
+                  <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-6 text-rose-900">
+                    This button is enabled only when `APP_ENV` is `local` or
+                    `sandbox`.
+                  </p>
+                ) : null}
+
+                {hmrcSandboxOAuth.missingEnvVars.length > 0 ? (
+                  <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-950">
+                    <p className="font-semibold">Missing local env vars</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5">
+                      {hmrcSandboxOAuth.missingEnvVars.map((variable) => (
+                        <li key={variable} className="font-mono text-xs">
+                          {variable}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {hmrcSandboxOAuth.invalidEnvMessages.length > 0 ? (
+                  <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-950">
+                    <p className="font-semibold">Local config to fix</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5">
+                      {hmrcSandboxOAuth.invalidEnvMessages.map((message) => (
+                        <li key={message}>{message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                <div className="mt-4 rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-3">
+                  <h3 className="text-sm font-semibold text-slate-950">
+                    After OAuth
+                  </h3>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-700">
+                    {hmrcRemainingBlockers.map((blocker) => (
+                      <li key={blocker}>{blocker}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="mt-4 rounded-md border border-slate-200 bg-white px-3 py-3">
+                  <h3 className="text-sm font-semibold text-slate-950">
+                    Next command
+                  </h3>
+                  <p className="mt-2 break-all font-mono text-xs leading-5 text-slate-700">
+                    {preflightCommand}
+                  </p>
+                </div>
+              </section>
+
+              <section
                 aria-labelledby="evidence-heading"
                 className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/50"
               >
@@ -519,19 +660,19 @@ export function WorkspaceShell() {
               </section>
 
               <section
-                aria-labelledby="disabled-actions-heading"
+                aria-labelledby="deferred-actions-heading"
                 className="rounded-lg border border-amber-300 bg-amber-50 p-5 text-amber-950"
               >
                 <h2
-                  id="disabled-actions-heading"
+                  id="deferred-actions-heading"
                   className="text-base font-semibold"
                 >
-                  Disabled in QL-005
+                  Deferred outside QL-008
                 </h2>
                 <p className="mt-3 text-sm leading-6">
-                  Upload spreadsheet, parse file, connect to HMRC, send
-                  quarterly update, and export evidence are visual placeholders
-                  only.
+                  Spreadsheet import, parsing, quarterly update calls, final
+                  declaration, billing, and practice workflows are not part of
+                  this step.
                 </p>
                 <button
                   type="button"
