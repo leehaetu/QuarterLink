@@ -81,6 +81,8 @@ set -a; source .env.local; set +a; npm run hmrc:sandbox-evidence:preflight
 
 The web app connection card starts OAuth from `http://localhost:3000` and uses `http://localhost:3000/api/hmrc/oauth/callback` as the HMRC sandbox redirect URI. OAuth completion alone is not HMRC sandbox evidence and does not make Business Details, Obligations, Self Employment Business, or Test Fraud Prevention Headers calls safe.
 
+The temporary `Continue as sandbox demo user` step is local-only and exists because full QuarterLink SaaS sign-in is not implemented yet. It works only when `APP_ENV=local` and `HMRC_ENV=sandbox`, creates no real user or database record, stores no HMRC token, and must not be treated as production authentication.
+
 ## QL-008 Preflight Result
 
 Result on 2026-05-12: blocked.

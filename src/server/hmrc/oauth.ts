@@ -13,6 +13,11 @@ export const HMRC_SANDBOX_OAUTH_SHOW_TOKENS_KEY =
   "HMRC_SANDBOX_OAUTH_SHOW_TOKENS";
 export const HMRC_SANDBOX_REQUIRED_REDIRECT_URI =
   "http://localhost:3000/api/hmrc/oauth/callback";
+export const HMRC_SANDBOX_DEMO_SESSION_COOKIE =
+  "quarterlink_hmrc_sandbox_demo_session";
+export const HMRC_SANDBOX_DEMO_SESSION_VALUE = "active";
+export const HMRC_SANDBOX_DEMO_SESSION_PATH =
+  "/api/local-sandbox/demo-session";
 
 const REQUIRED_LOCAL_OAUTH_ENV_KEYS = [
   "APP_ENV",
@@ -49,8 +54,11 @@ export interface HmrcSandboxOAuthUiState {
   readonly redirectUri: string;
   readonly startPath: string;
   readonly callbackPath: string;
+  readonly demoSessionPath: string;
   readonly requiredRedirectUri: string;
   readonly isLocalOrSandboxMode: boolean;
+  readonly canUseSandboxDemoSession: boolean;
+  readonly sandboxDemoSessionActive: boolean;
   readonly canStartOAuth: boolean;
   readonly missingEnvVars: readonly string[];
   readonly invalidEnvMessages: readonly string[];
@@ -85,6 +93,7 @@ export function buildSandboxOAuthAuthorisationUrl(
 
 export function getSandboxOAuthUiState(
   source: EnvironmentSource = process.env,
+  options: { readonly sandboxDemoSessionActive?: boolean } = {},
 ): HmrcSandboxOAuthUiState {
   const missingEnvVars = REQUIRED_LOCAL_OAUTH_ENV_KEYS.filter(
     (key) => !isPresent(source[key]),
@@ -94,6 +103,10 @@ export function getSandboxOAuthUiState(
   const hmrcEnvironment = source.HMRC_ENV?.trim() ?? "";
   const isLocalOrSandboxMode =
     appEnvironment === "local" || appEnvironment === "sandbox";
+  const canUseSandboxDemoSession =
+    appEnvironment === "local" && hmrcEnvironment === "sandbox";
+  const sandboxDemoSessionActive =
+    canUseSandboxDemoSession && options.sandboxDemoSessionActive === true;
 
   if (isPresent(appEnvironment) && !isLocalOrSandboxMode) {
     invalidEnvMessages.push("APP_ENV must be local or sandbox for this flow.");
@@ -136,16 +149,26 @@ export function getSandboxOAuthUiState(
     redirectUri: source.HMRC_SANDBOX_REDIRECT_URI?.trim() || "not set",
     startPath: HMRC_SANDBOX_OAUTH_START_PATH,
     callbackPath: HMRC_SANDBOX_OAUTH_CALLBACK_PATH,
+    demoSessionPath: HMRC_SANDBOX_DEMO_SESSION_PATH,
     requiredRedirectUri: HMRC_SANDBOX_REQUIRED_REDIRECT_URI,
     isLocalOrSandboxMode,
+    canUseSandboxDemoSession,
+    sandboxDemoSessionActive,
     canStartOAuth:
       isLocalOrSandboxMode &&
+      sandboxDemoSessionActive &&
       missingEnvVars.length === 0 &&
       invalidEnvMessages.length === 0,
     missingEnvVars,
     invalidEnvMessages,
     tokenDisplayEnabled: sandboxOAuthTokenDisplayEnabled(source),
   };
+}
+
+export function isSandboxDemoSessionCookieActive(
+  value: string | undefined,
+): boolean {
+  return value === HMRC_SANDBOX_DEMO_SESSION_VALUE;
 }
 
 export async function exchangeSandboxOAuthCode(

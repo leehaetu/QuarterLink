@@ -6,8 +6,10 @@ import {
   getSandboxOAuthUiState,
   HMRC_SANDBOX_API_BASE_URL,
   HMRC_SANDBOX_AUTH_BASE_URL,
+  HMRC_SANDBOX_DEMO_SESSION_VALUE,
   HMRC_SANDBOX_REQUIRED_REDIRECT_URI,
   HmrcSandboxOAuthError,
+  isSandboxDemoSessionCookieActive,
   summariseSandboxOAuthToken,
 } from "../../../src/server/hmrc";
 
@@ -56,12 +58,40 @@ describe("HMRC sandbox OAuth readiness", () => {
   });
 
   test("reports safe UI readiness without exposing secret values", () => {
-    const state = getSandboxOAuthUiState(oauthEnv);
+    const state = getSandboxOAuthUiState(oauthEnv, {
+      sandboxDemoSessionActive: true,
+    });
 
     assert.equal(state.canStartOAuth, true);
+    assert.equal(state.canUseSandboxDemoSession, true);
+    assert.equal(state.sandboxDemoSessionActive, true);
     assert.equal(state.requiredRedirectUri, HMRC_SANDBOX_REQUIRED_REDIRECT_URI);
     assert.deepEqual(state.missingEnvVars, []);
     assert(!JSON.stringify(state).includes("sandbox-client-secret"));
+  });
+
+  test("requires the local sandbox demo session before OAuth can start", () => {
+    const state = getSandboxOAuthUiState(oauthEnv);
+
+    assert.equal(state.canStartOAuth, false);
+    assert.equal(state.canUseSandboxDemoSession, true);
+    assert.equal(state.sandboxDemoSessionActive, false);
+  });
+
+  test("does not enable the demo session bypass outside local sandbox mode", () => {
+    const state = getSandboxOAuthUiState(
+      {
+        ...oauthEnv,
+        APP_ENV: "sandbox",
+      },
+      {
+        sandboxDemoSessionActive: true,
+      },
+    );
+
+    assert.equal(state.canStartOAuth, false);
+    assert.equal(state.canUseSandboxDemoSession, false);
+    assert.equal(state.sandboxDemoSessionActive, false);
   });
 
   test("reports missing local env vars for the app connection card", () => {
@@ -79,6 +109,15 @@ describe("HMRC sandbox OAuth readiness", () => {
     assert(state.missingEnvVars.includes("HMRC_SANDBOX_CLIENT_ID"));
     assert(state.missingEnvVars.includes("HMRC_SANDBOX_CLIENT_SECRET"));
     assert(state.missingEnvVars.includes("HMRC_SANDBOX_OAUTH_STATE"));
+  });
+
+  test("recognises only the exact local demo session cookie value", () => {
+    assert.equal(
+      isSandboxDemoSessionCookieActive(HMRC_SANDBOX_DEMO_SESSION_VALUE),
+      true,
+    );
+    assert.equal(isSandboxDemoSessionCookieActive("other"), false);
+    assert.equal(isSandboxDemoSessionCookieActive(undefined), false);
   });
 
   test("exchanges an authorisation code against the sandbox token endpoint", async () => {

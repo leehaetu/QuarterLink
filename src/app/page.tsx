@@ -1,8 +1,23 @@
 import { WorkspaceShell } from "./workspace-shell";
-import { getSandboxOAuthUiState } from "@/server/hmrc";
+import { cookies } from "next/headers";
+import {
+  getSandboxOAuthUiState,
+  HMRC_SANDBOX_DEMO_SESSION_COOKIE,
+  isSandboxDemoSessionCookieActive,
+} from "@/server/hmrc";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
-  return <WorkspaceShell hmrcSandboxOAuth={getSandboxOAuthUiState()} />;
+export default async function Home() {
+  const cookieStore = await cookies();
+
+  return (
+    <WorkspaceShell
+      hmrcSandboxOAuth={getSandboxOAuthUiState(process.env, {
+        sandboxDemoSessionActive: isSandboxDemoSessionCookieActive(
+          cookieStore.get(HMRC_SANDBOX_DEMO_SESSION_COOKIE)?.value,
+        ),
+      })}
+    />
+  );
 }

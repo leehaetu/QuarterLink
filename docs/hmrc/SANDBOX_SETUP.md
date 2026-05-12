@@ -81,6 +81,8 @@ Use the card's `Connect to HMRC Sandbox` button when local configuration is comp
 
 `http://localhost:3000/api/hmrc/oauth/start`
 
+Because full QuarterLink SaaS sign-in is not implemented yet, the local app includes a temporary `Continue as sandbox demo user` button. It sets an HTTP-only local cookie that works only when `APP_ENV=local` and `HMRC_ENV=sandbox`. It does not create real users, database records, HMRC tokens, or production authorisation. Outside that local sandbox mode, a real QuarterLink user must be signed in before connecting HMRC.
+
 Register this exact redirect URI on the HMRC sandbox application:
 
 `http://localhost:3000/api/hmrc/oauth/callback`
@@ -107,7 +109,7 @@ Start the app locally and open:
 
 `http://localhost:3000`
 
-Sign in with an HMRC individual sandbox test user, not an organisation test user. After the callback returns an access token in the local browser response, set it only in the local shell as:
+Click `Continue as sandbox demo user`, then click `Connect to HMRC Sandbox`. Sign in with an HMRC individual sandbox test user, not an organisation test user. After the callback returns an access token in the local browser response, set it only in the local shell as:
 
 ```bash
 HMRC_SANDBOX_ACCESS_TOKEN=<access-token-from-local-callback>

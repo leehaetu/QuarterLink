@@ -527,6 +527,38 @@ export function WorkspaceShell({ hmrcSandboxOAuth }: WorkspaceShellProps) {
                   only.
                 </p>
 
+                {hmrcSandboxOAuth.canUseSandboxDemoSession ? (
+                  hmrcSandboxOAuth.sandboxDemoSessionActive ? (
+                    <p className="mt-3 rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm leading-6 text-teal-950">
+                      Local sandbox demo user active. This is not real
+                      QuarterLink authentication and it creates no user record.
+                    </p>
+                  ) : (
+                    <form
+                      action={hmrcSandboxOAuth.demoSessionPath}
+                      method="post"
+                      className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-3"
+                    >
+                      <p className="text-sm leading-6 text-amber-950">
+                        Full SaaS sign-in is not built yet. Continue with a
+                        temporary local sandbox demo user before starting HMRC
+                        sandbox OAuth.
+                      </p>
+                      <button
+                        type="submit"
+                        className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-amber-700 bg-white px-4 py-2 text-sm font-semibold text-amber-950 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:ring-offset-2"
+                      >
+                        Continue as sandbox demo user
+                      </button>
+                    </form>
+                  )
+                ) : (
+                  <p className="mt-3 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
+                    Outside the local sandbox demo flow, a real QuarterLink user
+                    must be signed in before connecting HMRC.
+                  </p>
+                )}
+
                 <dl className="mt-4 grid gap-2 text-sm">
                   <div className="rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-2">
                     <dt className="text-xs font-semibold uppercase tracking-normal text-slate-500">
@@ -567,6 +599,14 @@ export function WorkspaceShell({ hmrcSandboxOAuth }: WorkspaceShellProps) {
                   <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-6 text-rose-900">
                     This button is enabled only when `APP_ENV` is `local` or
                     `sandbox`.
+                  </p>
+                ) : null}
+
+                {hmrcSandboxOAuth.canUseSandboxDemoSession &&
+                !hmrcSandboxOAuth.sandboxDemoSessionActive ? (
+                  <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-950">
+                    Continue as the sandbox demo user before connecting to HMRC
+                    Sandbox.
                   </p>
                 ) : null}
 
