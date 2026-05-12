@@ -4,5 +4,6 @@ export * from "./evidence";
 export * from "./fraud-prevention";
 export * from "./oauth";
 export * from "./preflight";
+export * from "./sandbox-discovery";
 export * from "./redaction";
 export * from "./types";
