@@ -9,7 +9,7 @@ Phase 1: polished sandbox-readiness MVP.
 
 Bootstrap and project-pack cleanup are complete. QL-001 and the project-file consolidation have been accepted by the human and are recorded as committed through the QL-002 control sync.
 
-The next goal is to build a credible, usable web app path that can reach HMRC sandbox testing quickly without creating avoidable production-access blockers.
+The next goal is QL-004: build a credible, usable guided app workspace that can lead toward HMRC sandbox testing without creating avoidable production-access blockers.
 
 ## Strategy
 
@@ -59,7 +59,9 @@ Purpose:
 
 ## QL-003 - Sandbox-Readiness MVP Target and HMRC Production-Access Checklist
 
-Recommended next ticket type:
+Status: `GPT_ACCEPTED` after human review on 2026-05-12.
+
+Ticket type:
 
 - Documentation/specification only.
 - Short and practical.
@@ -79,9 +81,11 @@ Likely files:
 - `docs/hmrc/PRODUCTION_ACCESS_CHECKLIST.md`
 - `.agent/runs/QL-003-run-001.md`
 
+QL-003 did not implement product code, HMRC API calls, authentication, database storage, spreadsheet parsing, submissions, billing, practice workflows, or public website work.
+
 ## QL-004 - Polished App Workspace and Guided Workflow Shell
 
-Recommended next implementation ticket.
+Next active ticket. Not started.
 
 Purpose:
 

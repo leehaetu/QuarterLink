@@ -3,7 +3,7 @@
 Last updated: 2026-05-12
 Repository: `leehaetu/QuarterLink`
 Default branch: `main`
-Status: QL-001 and project-file consolidation accepted by the human; QL-002 control sync committed.
+Status: QL-003 accepted by human review; QL-004 is the next active ticket and has not been started.
 
 ## Confirmed Live Repo State At Start Of QL-002
 
@@ -30,9 +30,11 @@ Known branch state:
 - `QL-BOOTSTRAP` is `COMMITTED`.
 - `QL-001` is now recorded as `COMMITTED` after human acceptance.
 - Project-file consolidation report 001 is now recorded as completed and committed.
-- `QL-002` is the control-sync ticket that closes the drift and reconciles the ticket sequence.
-- `QL-003` is the next draft ticket.
-- Codex did not mark any work `GPT_ACCEPTED`.
+- `QL-002` is the control-sync ticket that closed the drift and reconciled the ticket sequence.
+- `QL-003` is recorded as `GPT_ACCEPTED` after human review on 2026-05-12.
+- `QL-003` was documentation/specification only and did not implement product code, HMRC API calls, authentication, database storage, spreadsheet parsing, submissions, billing, practice workflows, or public website work.
+- `QL-004` is the next active ticket, but it has not been started.
+- Codex did not mark any work `GPT_ACCEPTED` without human instruction.
 
 ## Accepted Completed Work
 
@@ -99,22 +101,15 @@ Not implemented:
 
 ## Correct Next Action
 
-After QL-002 is committed, the next ticket should be QL-003:
+After QL-003 acceptance, the next ticket should be QL-004:
 
 ```text
-Sandbox-readiness MVP target and HMRC production-access checklist.
+Polished app workspace and guided workflow shell.
 ```
 
-QL-003 should be short and practical. It should define the narrow path for:
+QL-004 should build a guided app workspace using static/local state only. It must not start HMRC API calls, authentication, database storage, spreadsheet parsing, submissions, sandbox evidence, public website work, billing, or practice workflows unless a later approval changes the ticket scope.
 
-- one polished individual-user workflow,
-- Route B spreadsheet records,
-- read-only imported totals when import exists,
-- evidence boundaries,
-- HMRC sandbox readiness,
-- official HMRC production-access checklist items.
-
-Then move quickly into QL-004 product UI/workflow implementation.
+Do not start QL-004 until explicitly instructed.
 
 ## Ticket Sequence
 

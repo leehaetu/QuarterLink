@@ -40,6 +40,22 @@ The first MVP does not yet implement:
 - final declaration
 - tax return features
 
+## Sandbox-readiness vertical slice
+
+QL-003 narrows the first build path before HMRC sandbox API testing. This is a vertical slice of the broader product direction, not the full commercial product.
+
+The first sandbox-readiness slice is:
+- individual taxpayer only
+- one self-employment income source first
+- UK Making Tax Digital for Income Tax regime only
+- Route B linked spreadsheet summary workflow first
+- read-only imported/submitted totals
+- no in-app editing of accounting figures
+- no transaction-level accounting system
+- no final declaration or tax return workflow
+- one quarterly update path
+- evidence capture sufficient to support later HMRC sandbox testing
+
 ## Strict exclusions
 
 QuarterLink must not build these in the MVP:

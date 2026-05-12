@@ -17,6 +17,8 @@
 | --- | --- |
 | MTD ITSA | Avoid shorthand in user-facing text |
 | HMRC-approved | Do not claim recognition or approval |
+| HMRC-recognised | Do not use until the required HMRC process has been completed and evidenced |
+| production ready | Do not claim production readiness before production access and product capability are evidenced |
 | file quarterly tax returns | Quarterly updates are not tax returns |
 | submit quarterly returns | Quarterly updates are not quarterly returns |
 | EOPS | Avoid shorthand |
