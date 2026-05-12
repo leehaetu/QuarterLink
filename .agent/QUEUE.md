@@ -9,4 +9,5 @@
 | QL-006 | Auth, tenant, audit, secrets, and HMRC access architecture | GPT_ACCEPTED |
 | QL-007 | HMRC sandbox integration foundation | GPT_ACCEPTED |
 | QL-008 | First HMRC sandbox quarterly update evidence run | GPT_ACCEPTED |
-| QL-009 | Resolve QL-008 sandbox readiness blockers before retrying HMRC sandbox submission | DRAFT |
+
+Next project action: QL-008 blocker resolution / retry prerequisites. No new ticket has been created or started.
