@@ -9,7 +9,7 @@ Phase 1: polished sandbox-readiness MVP.
 
 Bootstrap and project-pack cleanup are complete. QL-001 and the project-file consolidation have been accepted by the human and are recorded as committed through the QL-002 control sync.
 
-The next goal is QL-005: define the Route B spreadsheet workflow and evidence design in detail.
+The next goal is QL-006: define the auth, tenant, audit, secrets, and HMRC access architecture before sandbox integration work.
 
 ## Strategy
 
@@ -106,6 +106,8 @@ QL-004 built a static/local app workspace shell only. It did not implement HMRC 
 
 ## QL-005 - Spreadsheet Route B Local Workflow and Evidence Design
 
+Status: `GPT_ACCEPTED` after human review on 2026-05-12.
+
 Purpose:
 
 - Specify and/or prototype the linked QuarterLink summary sheet route.
@@ -118,6 +120,8 @@ Out of scope unless explicitly approved:
 - Arbitrary spreadsheet smart mapping.
 - Manual edits to imported monetary values.
 - Quarterly update sending.
+
+QL-005 built a local/static Route B workflow and evidence preview only. It did not implement spreadsheet upload/parsing, HMRC OAuth, HMRC API calls, authentication, database persistence, real submissions, billing, practice workflows, public website functionality, or production evidence generation.
 
 ## QL-006 - Auth, Tenant, Audit, Secrets, and HMRC Access Architecture
 

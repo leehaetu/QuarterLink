@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "QuarterLink Workspace Preview",
+  title: "QuarterLink Route B Preview",
   description:
-    "Local workspace preview for Making Tax Digital for Income Tax quarterly updates from spreadsheet records.",
+    "Local Route B workflow preview for Making Tax Digital for Income Tax quarterly updates from spreadsheet records.",
 };
 
 export default function RootLayout({

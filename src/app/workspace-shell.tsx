@@ -2,262 +2,197 @@
 
 import { useMemo, useState } from "react";
 
-type WorkflowStage = {
+type RouteBStep = {
   id: string;
   label: string;
-  shortLabel: string;
-  status: "Current" | "Ready" | "Blocked" | "Preview";
   title: string;
-  description: string;
-  actions: string[];
-  evidence: string[];
-  boundary: string;
+  summary: string;
+  checklist: string[];
+  note: string;
 };
 
-const workflowStages: WorkflowStage[] = [
+const routeBSteps: RouteBStep[] = [
   {
-    id: "overview",
-    label: "Workspace overview",
-    shortLabel: "Overview",
-    status: "Current",
-    title: "Local workspace for the first sandbox-readiness slice",
-    description:
-      "This preview follows one individual taxpayer with one self-employment income source. It is a local workflow shell only.",
-    actions: [
-      "Review the guided path from spreadsheet records to a quarterly update placeholder.",
-      "Confirm the first route stays focused on Route B linked summary sheets.",
-      "Keep every imported monetary figure read-only inside QuarterLink.",
+    id: "explain",
+    label: "Route B",
+    title: "Keep your spreadsheet. Add a linked QuarterLink summary sheet.",
+    summary:
+      "Route B means the user keeps their own spreadsheet records and adds a summary sheet whose cells are linked by formula to those records.",
+    checklist: [
+      "Keep day-to-day records in the existing spreadsheet.",
+      "Add a sheet named QuarterLink Summary.",
+      "Use formulas to link each summary total to source record sheets.",
+      "Do not copy and paste totals into QuarterLink.",
     ],
-    evidence: [
-      "Workflow stage checklist",
-      "Local preview status",
-      "No HMRC connection state",
-    ],
-    boundary:
-      "No authentication, database storage, spreadsheet parsing, HMRC calls, or sandbox evidence exists in this preview.",
+    note: "This is a local design preview. No spreadsheet file is uploaded or read.",
   },
   {
-    id: "readiness",
-    label: "Check Making Tax Digital readiness",
-    shortLabel: "Readiness",
-    status: "Blocked",
-    title: "HMRC connection placeholder",
-    description:
-      "QuarterLink is not connected to HMRC yet. A later ticket must design OAuth, fraud prevention headers, audit events, and secret handling before sandbox API work starts.",
-    actions: [
-      "Show the user that Making Tax Digital for Income Tax setup is a later gated step.",
-      "Keep Developer Hub and sandbox credential tasks out of this UI ticket.",
-      "Prevent any production access, approval, or recognition wording.",
+    id: "prepare",
+    label: "Prepare",
+    title: "Prepare the linked summary sheet",
+    summary:
+      "The summary sheet gives QuarterLink one predictable place to read quarterly update category totals later.",
+    checklist: [
+      "Set the tax year and update period on the summary sheet.",
+      "Use one row per quarterly update category placeholder.",
+      "Keep source sheet and cell references visible.",
+      "Use one mapping version for the local workflow preview.",
     ],
-    evidence: [
-      "Connection state: not connected",
-      "Sandbox status: no sandbox calls",
-      "Production status: not available",
-    ],
-    boundary:
-      "The connect action is intentionally disabled. It does not start OAuth and does not call HMRC.",
+    note: "Corrections happen in the source spreadsheet, followed by re-import in a later ticket.",
   },
   {
-    id: "income-source",
-    label: "Choose income source",
-    shortLabel: "Income",
-    status: "Ready",
-    title: "Self-employment first",
-    description:
-      "The first vertical slice supports one self-employment income source. Property, multiple self-employments, and agent workflows stay deferred.",
-    actions: [
-      "Keep the selected income source fixed to self-employment.",
-      "Show one standard update period for the local preview.",
-      "Avoid end-of-year workflow prompts.",
+    id: "categories",
+    label: "Categories",
+    title: "Review self-employment category placeholders",
+    summary:
+      "The first slice is one individual taxpayer with one self-employment income source and one quarterly update path.",
+    checklist: [
+      "Use self-employment category placeholders only.",
+      "Keep property and multiple-income-source routes deferred.",
+      "Show missing categories as placeholders, not editable figures.",
+      "Keep the update period separate from the filing deadline.",
     ],
-    evidence: [
-      "Income source type: self-employment",
-      "Tax regime: UK Making Tax Digital for Income Tax",
-      "Update period path: one quarterly update",
-    ],
-    boundary:
-      "Income source discovery from HMRC Business Details is not implemented in QL-004.",
+    note: "Category mapping is static here. No HMRC obligation or income-source API is called.",
   },
   {
-    id: "spreadsheet",
-    label: "Spreadsheet workflow",
-    shortLabel: "Spreadsheet",
-    status: "Ready",
-    title: "Route B linked summary sheet",
-    description:
-      "The user keeps their existing spreadsheet and adds a QuarterLink summary sheet linked by formulas to their spreadsheet records.",
-    actions: [
-      "Use Route B as the recommended route for existing spreadsheet users.",
-      "Explain that linked cells preserve the digital path.",
-      "Direct corrections back to the source spreadsheet, then re-import.",
+    id: "read-only",
+    label: "Read-only",
+    title: "Imported totals are locked in QuarterLink",
+    summary:
+      "The app design shows monetary values as imported totals that cannot be edited inside QuarterLink.",
+    checklist: [
+      "Show the category total.",
+      "Show the linked source cell.",
+      "Show the validation placeholder.",
+      "Make correction instructions visible beside the totals.",
     ],
-    evidence: [
-      "Source filename placeholder",
-      "Summary sheet name placeholder",
-      "Mapping version placeholder",
-    ],
-    boundary:
-      "No file upload, spreadsheet parsing, cell reading, or import worker exists in this ticket.",
+    note: "No accounting or tax figure can be changed in the app shell.",
   },
   {
-    id: "review",
-    label: "Review imported totals",
-    shortLabel: "Review",
-    status: "Preview",
-    title: "Read-only imported totals placeholder",
-    description:
-      "Preview totals are displayed as locked rows. They are not parsed from a spreadsheet and they cannot be edited inside QuarterLink.",
-    actions: [
-      "Review category totals as read-only values.",
-      "Check source cell references as placeholder evidence.",
-      "Correct any figure in the source spreadsheet, then import again in a later ticket.",
+    id: "evidence",
+    label: "Evidence",
+    title: "Preview the digital-link evidence bundle",
+    summary:
+      "The evidence preview shows what would later support sandbox testing: file metadata, mapping version, source references, validation, and user confirmation.",
+    checklist: [
+      "Capture source file details later without retaining the full file by default.",
+      "Retain the mapping version and source cell references.",
+      "Link the evidence bundle to the quarterly update period.",
+      "Keep local preview evidence separate from future HMRC sandbox evidence.",
     ],
-    evidence: [
-      "Local source hash placeholder",
-      "Sheet and cell reference placeholders",
-      "Validation status placeholders",
-    ],
-    boundary:
-      "The values shown are local demo data only and are not HMRC sandbox evidence.",
+    note: "This preview creates no evidence record and stores nothing.",
   },
   {
     id: "declaration",
-    label: "Declaration and evidence",
-    shortLabel: "Evidence",
-    status: "Blocked",
-    title: "Declaration and evidence placeholder",
-    description:
-      "A later ticket must define the exact declaration wording and evidence pack. This screen shows the shape without creating a submission record.",
-    actions: [
-      "State that quarterly updates are not tax returns.",
-      "Show which evidence fields will be needed before sandbox testing.",
-      "Keep support and audit expectations visible without implementing storage.",
+    label: "Declaration",
+    title: "Declaration placeholder before sending a quarterly update",
+    summary:
+      "A later ticket must define exact declaration text. This screen only shows the intended position in the workflow.",
+    checklist: [
+      "Tell the user they are reviewing a quarterly update.",
+      "Require read-only total review before a future send action.",
+      "Show that HMRC connection is still missing.",
+      "Disable send and evidence export actions in the local preview.",
     ],
-    evidence: [
-      "Declaration text placeholder",
-      "User confirmation timestamp placeholder",
-      "Evidence pack placeholder",
-    ],
-    boundary:
-      "No declaration is captured, no audit event is written, and no evidence pack is generated.",
-  },
-  {
-    id: "submission",
-    label: "Quarterly update placeholder",
-    shortLabel: "Update",
-    status: "Blocked",
-    title: "Sending is disabled",
-    description:
-      "This stage shows where a user would later send a quarterly update after HMRC OAuth, obligations, fraud prevention headers, and evidence capture are implemented.",
-    actions: [
-      "Keep the send action disabled in the local preview.",
-      "Show the missing preconditions before HMRC sandbox testing.",
-      "Avoid any claim that QuarterLink can send updates today.",
-    ],
-    evidence: [
-      "HMRC authorisation: missing",
-      "Fraud prevention header evidence: missing",
-      "Open obligation check: not implemented",
-    ],
-    boundary:
-      "No submission payload is built and no quarterly update is sent.",
-  },
-  {
-    id: "confirmation",
-    label: "Confirmation placeholder",
-    shortLabel: "Confirm",
-    status: "Blocked",
-    title: "Confirmation and evidence placeholder",
-    description:
-      "A future sandbox run will record request, response, payload hash, endpoint version, and status. QL-004 only previews that destination.",
-    actions: [
-      "Show where confirmation details will appear after real sandbox API calls.",
-      "Keep local mock information separate from HMRC sandbox evidence.",
-      "Point the next implementation work toward Route B evidence design.",
-    ],
-    evidence: [
-      "HMRC response: not available",
-      "Submission attempt ID: not created",
-      "Evidence export: not available",
-    ],
-    boundary:
-      "No confirmation exists because no HMRC sandbox or production call has occurred.",
+    note: "QuarterLink is not connected to HMRC and cannot send anything from this screen.",
   },
 ];
 
-const previewTotals = [
+const categoryPlaceholders = [
+  {
+    code: "SE-TURNOVER",
+    label: "Turnover",
+    expected: "Required",
+    source: "QuarterLink Summary!B8",
+  },
+  {
+    code: "SE-COSTS",
+    label: "Cost of goods",
+    expected: "Placeholder",
+    source: "QuarterLink Summary!B12",
+  },
+  {
+    code: "SE-TRAVEL",
+    label: "Travel costs",
+    expected: "Placeholder",
+    source: "QuarterLink Summary!B18",
+  },
+  {
+    code: "SE-OFFICE",
+    label: "Office costs",
+    expected: "Placeholder",
+    source: "QuarterLink Summary!B22",
+  },
+] as const;
+
+const importedTotals = [
   {
     category: "Turnover",
-    value: "12,480.00",
-    source: "QL Summary!B8",
-    status: "Linked total placeholder",
+    amount: "12,480.00",
+    source: "QuarterLink Summary!B8",
+    validation: "Numeric total placeholder",
   },
   {
     category: "Cost of goods",
-    value: "2,150.00",
-    source: "QL Summary!B12",
-    status: "Linked total placeholder",
+    amount: "2,150.00",
+    source: "QuarterLink Summary!B12",
+    validation: "Numeric total placeholder",
   },
   {
     category: "Travel costs",
-    value: "380.00",
-    source: "QL Summary!B18",
-    status: "Linked total placeholder",
+    amount: "380.00",
+    source: "QuarterLink Summary!B18",
+    validation: "Numeric total placeholder",
   },
   {
     category: "Office costs",
-    value: "215.00",
-    source: "QL Summary!B22",
-    status: "Linked total placeholder",
+    amount: "215.00",
+    source: "QuarterLink Summary!B22",
+    validation: "Numeric total placeholder",
   },
 ] as const;
 
-const readinessCards = [
-  {
-    label: "HMRC connection",
-    value: "Not connected",
-    detail: "OAuth and API calls are deliberately absent.",
-  },
-  {
-    label: "Workflow data",
-    value: "Local only",
-    detail: "State resets on refresh and is not persisted.",
-  },
-  {
-    label: "Spreadsheet import",
-    value: "Placeholder",
-    detail: "No spreadsheet file is read or parsed.",
-  },
-  {
-    label: "Evidence status",
-    value: "Preview only",
-    detail: "No HMRC sandbox evidence is created.",
-  },
+const evidenceBundle = [
+  ["Taxpayer", "Individual taxpayer placeholder"],
+  ["Income source", "Self-employment placeholder"],
+  ["Update period", "6 April to 5 July"],
+  ["Source file", "sole-trader-records.xlsx"],
+  ["Source hash", "Local hash placeholder"],
+  ["Mapping version", "route-b-self-employment-v0"],
+  ["Sheet references", "QuarterLink Summary cells B8, B12, B18, B22"],
+  ["Confirmation", "Not captured in local preview"],
 ] as const;
 
-const deferredItems = [
-  "HMRC OAuth and API calls",
-  "Authentication and tenant storage",
-  "Spreadsheet parsing",
-  "Real quarterly update sending",
-  "End-of-year workflows",
+const boundaryCards = [
+  {
+    title: "Local/demo only",
+    body: "This workflow uses local React state. It does not store data and does not create HMRC sandbox evidence.",
+  },
+  {
+    title: "No HMRC connection",
+    body: "OAuth, HMRC APIs, obligations, and submission endpoints are deliberately absent.",
+  },
+  {
+    title: "Read-only figures",
+    body: "Monetary totals are displayed as locked imported values. Corrections happen in the spreadsheet.",
+  },
 ] as const;
 
 export function WorkspaceShell() {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const activeStage = workflowStages[activeIndex];
-  const completionLabel = useMemo(
-    () => `${activeIndex + 1} of ${workflowStages.length}`,
-    [activeIndex],
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const activeStep = routeBSteps[activeStepIndex];
+  const stepCount = useMemo(
+    () => `${activeStepIndex + 1} of ${routeBSteps.length}`,
+    [activeStepIndex],
   );
 
   const goToPrevious = () => {
-    setActiveIndex((current) => Math.max(0, current - 1));
+    setActiveStepIndex((current) => Math.max(0, current - 1));
   };
 
   const goToNext = () => {
-    setActiveIndex((current) =>
-      Math.min(workflowStages.length - 1, current + 1),
+    setActiveStepIndex((current) =>
+      Math.min(routeBSteps.length - 1, current + 1),
     );
   };
 
@@ -269,25 +204,25 @@ export function WorkspaceShell() {
             <div>
               <p className="text-xl font-semibold">QuarterLink</p>
               <p className="mt-1 max-w-60 text-sm leading-5 text-slate-600">
-                Workspace preview for Making Tax Digital for Income Tax
-                quarterly updates.
+                Route B workflow preview for spreadsheet records and quarterly
+                updates.
               </p>
             </div>
             <span className="inline-flex rounded-md border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900 lg:mt-5">
-              Sandbox/local demo only
+              Local/demo only
             </span>
           </div>
 
-          <nav className="mt-6" aria-label="QuarterLink workflow stages">
+          <nav className="mt-6" aria-label="Route B workflow stages">
             <ol className="grid gap-2">
-              {workflowStages.map((stage, index) => {
-                const isActive = index === activeIndex;
+              {routeBSteps.map((step, index) => {
+                const isActive = index === activeStepIndex;
 
                 return (
-                  <li key={stage.id}>
+                  <li key={step.id}>
                     <button
                       type="button"
-                      onClick={() => setActiveIndex(index)}
+                      onClick={() => setActiveStepIndex(index)}
                       aria-current={isActive ? "step" : undefined}
                       className={`w-full rounded-md border px-3 py-3 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-teal-700 focus:ring-offset-2 ${
                         isActive
@@ -296,10 +231,10 @@ export function WorkspaceShell() {
                       }`}
                     >
                       <span className="block text-xs font-semibold uppercase tracking-normal">
-                        Stage {index + 1}
+                        Step {index + 1}
                       </span>
                       <span className="mt-1 block font-semibold">
-                        {stage.shortLabel}
+                        {step.label}
                       </span>
                     </button>
                   </li>
@@ -314,45 +249,41 @@ export function WorkspaceShell() {
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div className="max-w-4xl">
                 <p className="text-sm font-semibold text-teal-800">
-                  Guided quarterly update workflow
+                  Route B linked summary sheet
                 </p>
                 <h1 className="mt-2 max-w-4xl text-3xl font-semibold tracking-normal text-slate-950 sm:text-4xl">
-                  Prepare a linked spreadsheet summary for one quarterly update.
+                  Keep spreadsheet records and review linked quarterly totals.
                 </h1>
                 <p className="mt-3 max-w-3xl text-base leading-7 text-slate-700">
-                  A polished local workspace for the first sandbox-readiness
-                  slice: one individual taxpayer, one self-employment, Route B
-                  spreadsheet records, and read-only review placeholders.
+                  A local workflow design for one individual taxpayer, one
+                  self-employment income source, one quarterly update, and a
+                  read-only evidence preview.
                 </p>
               </div>
 
               <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 xl:w-80">
-                QuarterLink is not connected to HMRC yet. This screen does not
-                create sandbox evidence, send quarterly updates, or store data.
+                This page is not connected to HMRC. It does not upload
+                spreadsheets, parse files, persist data, or send quarterly
+                updates.
               </div>
             </div>
           </header>
 
           <section
-            aria-labelledby="readiness-summary"
-            className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4"
+            aria-labelledby="boundaries-heading"
+            className="mt-6 grid gap-3 md:grid-cols-3"
           >
-            <h2 id="readiness-summary" className="sr-only">
-              Local readiness summary
+            <h2 id="boundaries-heading" className="sr-only">
+              Route B boundaries
             </h2>
-            {readinessCards.map((card) => (
+            {boundaryCards.map((card) => (
               <article
-                key={card.label}
+                key={card.title}
                 className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50"
               >
-                <p className="text-sm font-medium text-slate-600">
-                  {card.label}
-                </p>
-                <p className="mt-2 text-xl font-semibold text-slate-950">
-                  {card.value}
-                </p>
+                <h3 className="font-semibold text-slate-950">{card.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {card.detail}
+                  {card.body}
                 </p>
               </article>
             ))}
@@ -361,94 +292,130 @@ export function WorkspaceShell() {
           <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
             <div className="space-y-6">
               <section
-                aria-labelledby="active-stage-title"
+                aria-labelledby="active-step-title"
                 className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/50 sm:p-6"
               >
                 <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-teal-800">
-                      Stage {completionLabel}
+                      Route B step {stepCount}
                     </p>
                     <h2
-                      id="active-stage-title"
+                      id="active-step-title"
                       className="mt-2 text-2xl font-semibold tracking-normal text-slate-950"
                     >
-                      {activeStage.title}
+                      {activeStep.title}
                     </h2>
                     <p className="mt-3 max-w-3xl text-base leading-7 text-slate-700">
-                      {activeStage.description}
+                      {activeStep.summary}
                     </p>
                   </div>
-                  <span
-                    className={`inline-flex w-fit rounded-md px-3 py-1 text-xs font-semibold ${
-                      activeStage.status === "Blocked"
-                        ? "bg-amber-100 text-amber-900"
-                        : activeStage.status === "Ready"
-                          ? "bg-teal-100 text-teal-900"
-                          : activeStage.status === "Current"
-                            ? "bg-slate-950 text-white"
-                            : "bg-sky-100 text-sky-900"
-                    }`}
-                  >
-                    {activeStage.status}
+                  <span className="inline-flex w-fit rounded-md bg-teal-100 px-3 py-1 text-xs font-semibold text-teal-900">
+                    Static workflow
                   </span>
                 </div>
 
-                <div className="mt-5 grid gap-5 lg:grid-cols-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-950">
-                      User guidance
-                    </h3>
-                    <ul className="mt-3 space-y-3">
-                      {activeStage.actions.map((action) => (
-                        <li
-                          key={action}
-                          className="rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-3 text-sm leading-6 text-slate-700"
-                        >
-                          {action}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                <ul className="mt-5 grid gap-3 md:grid-cols-2">
+                  {activeStep.checklist.map((item) => (
+                    <li
+                      key={item}
+                      className="rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-3 text-sm leading-6 text-slate-700"
+                    >
+                      {item}
+                    </li>
+                  ))}
+                </ul>
 
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-950">
-                      Evidence placeholders
-                    </h3>
-                    <ul className="mt-3 space-y-3">
-                      {activeStage.evidence.map((item) => (
-                        <li
-                          key={item}
-                          className="rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-700"
-                        >
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-
-                <p className="mt-5 rounded-md border border-slate-300 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
-                  {activeStage.boundary}
+                <p className="mt-5 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+                  {activeStep.note}
                 </p>
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <button
                     type="button"
                     onClick={goToPrevious}
-                    disabled={activeIndex === 0}
+                    disabled={activeStepIndex === 0}
                     className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-700 focus:ring-offset-2 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
                   >
-                    Previous stage
+                    Previous step
                   </button>
                   <button
                     type="button"
                     onClick={goToNext}
-                    disabled={activeIndex === workflowStages.length - 1}
+                    disabled={activeStepIndex === routeBSteps.length - 1}
                     className="rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-700 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
-                    Next stage
+                    Next step
                   </button>
+                </div>
+              </section>
+
+              <section
+                aria-labelledby="categories-heading"
+                className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/50 sm:p-6"
+              >
+                <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h2
+                      id="categories-heading"
+                      className="text-xl font-semibold text-slate-950"
+                    >
+                      Quarterly update category placeholders
+                    </h2>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                      These are local placeholders for the self-employment Route
+                      B summary. Exact category rules remain for a later
+                      implementation ticket.
+                    </p>
+                  </div>
+                  <span className="inline-flex w-fit rounded-md border border-slate-300 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                    One self-employment
+                  </span>
+                </div>
+
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
+                    <caption className="sr-only">
+                      Route B self-employment category placeholders
+                    </caption>
+                    <thead>
+                      <tr className="text-slate-600">
+                        <th scope="col" className="border-b px-3 py-3">
+                          Code
+                        </th>
+                        <th scope="col" className="border-b px-3 py-3">
+                          Category
+                        </th>
+                        <th scope="col" className="border-b px-3 py-3">
+                          Requirement
+                        </th>
+                        <th scope="col" className="border-b px-3 py-3">
+                          Linked cell
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categoryPlaceholders.map((category) => (
+                        <tr key={category.code} className="align-top">
+                          <td className="border-b border-slate-100 px-3 py-3 font-mono text-xs text-slate-700">
+                            {category.code}
+                          </td>
+                          <th
+                            scope="row"
+                            className="border-b border-slate-100 px-3 py-3 font-semibold text-slate-950"
+                          >
+                            {category.label}
+                          </th>
+                          <td className="border-b border-slate-100 px-3 py-3 text-slate-700">
+                            {category.expected}
+                          </td>
+                          <td className="border-b border-slate-100 px-3 py-3 text-slate-700">
+                            {category.source}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </section>
 
@@ -462,7 +429,7 @@ export function WorkspaceShell() {
                       id="totals-heading"
                       className="text-xl font-semibold text-slate-950"
                     >
-                      Read-only imported totals placeholder
+                      Read-only imported totals preview
                     </h2>
                     <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
                       QuarterLink reads linked totals from your spreadsheet. If
@@ -471,105 +438,84 @@ export function WorkspaceShell() {
                     </p>
                   </div>
                   <span className="inline-flex w-fit rounded-md border border-slate-300 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                    Editing disabled
+                    Figures locked
                   </span>
                 </div>
 
-                <div className="mt-4 overflow-x-auto">
-                  <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
-                    <caption className="sr-only">
-                      Static preview totals for the Route B linked summary sheet
-                    </caption>
-                    <thead>
-                      <tr className="text-slate-600">
-                        <th scope="col" className="border-b px-3 py-3">
-                          Category
-                        </th>
-                        <th scope="col" className="border-b px-3 py-3">
-                          Amount
-                        </th>
-                        <th scope="col" className="border-b px-3 py-3">
-                          Source cell
-                        </th>
-                        <th scope="col" className="border-b px-3 py-3">
-                          Status
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewTotals.map((total) => (
-                        <tr key={total.category} className="align-top">
-                          <th
-                            scope="row"
-                            className="border-b border-slate-100 px-3 py-3 font-semibold text-slate-950"
-                          >
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {importedTotals.map((total) => (
+                    <article
+                      key={total.category}
+                      className="rounded-md border border-slate-200 bg-[#fafbf8] p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold text-slate-950">
                             {total.category}
-                          </th>
-                          <td className="border-b border-slate-100 px-3 py-3 font-mono text-slate-800">
-                            GBP {total.value}
-                          </td>
-                          <td className="border-b border-slate-100 px-3 py-3 text-slate-700">
+                          </h3>
+                          <p className="mt-1 text-sm text-slate-600">
                             {total.source}
-                          </td>
-                          <td className="border-b border-slate-100 px-3 py-3 text-slate-700">
-                            {total.status}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </p>
+                        </div>
+                        <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-600">
+                          Read-only
+                        </span>
+                      </div>
+                      <p className="mt-4 font-mono text-2xl font-semibold text-slate-950">
+                        GBP {total.amount}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {total.validation}
+                      </p>
+                    </article>
+                  ))}
                 </div>
               </section>
             </div>
 
             <aside className="space-y-6">
               <section
-                aria-labelledby="route-card-heading"
+                aria-labelledby="evidence-heading"
                 className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/50"
               >
                 <h2
-                  id="route-card-heading"
+                  id="evidence-heading"
                   className="text-base font-semibold text-slate-950"
                 >
-                  Route B workflow
+                  Evidence bundle preview
                 </h2>
-                <ol className="mt-4 space-y-3">
-                  {[
-                    "Keep existing spreadsheet records.",
-                    "Add a QuarterLink summary sheet.",
-                    "Link summary cells by formula.",
-                    "Review read-only totals in QuarterLink.",
-                  ].map((item, index) => (
-                    <li
-                      key={item}
-                      className="flex gap-3 text-sm leading-6 text-slate-700"
+                <dl className="mt-4 space-y-3">
+                  {evidenceBundle.map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-3"
                     >
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-teal-100 text-xs font-semibold text-teal-900">
-                        {index + 1}
-                      </span>
-                      <span>{item}</span>
-                    </li>
+                      <dt className="text-xs font-semibold uppercase tracking-normal text-slate-500">
+                        {label}
+                      </dt>
+                      <dd className="mt-1 text-sm leading-6 text-slate-800">
+                        {value}
+                      </dd>
+                    </div>
                   ))}
-                </ol>
+                </dl>
               </section>
 
               <section
-                aria-labelledby="blocked-heading"
+                aria-labelledby="digital-link-heading"
                 className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/50"
               >
                 <h2
-                  id="blocked-heading"
+                  id="digital-link-heading"
                   className="text-base font-semibold text-slate-950"
                 >
-                  Deferred from QL-004
+                  Digital-link boundary
                 </h2>
-                <ul className="mt-4 space-y-3">
-                  {deferredItems.map((item) => (
-                    <li key={item} className="text-sm leading-6 text-slate-700">
-                      {item}
-                    </li>
-                  ))}
-                </ul>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  The intended path is source records to linked summary cells to
+                  QuarterLink. Manual changes to imported monetary totals are
+                  not part of the workflow.
+                </p>
               </section>
 
               <section
@@ -580,18 +526,19 @@ export function WorkspaceShell() {
                   id="disabled-actions-heading"
                   className="text-base font-semibold"
                 >
-                  Disabled actions
+                  Disabled in QL-005
                 </h2>
                 <p className="mt-3 text-sm leading-6">
-                  Connect to HMRC, import spreadsheet, send quarterly update,
-                  and export evidence actions are placeholders only.
+                  Upload spreadsheet, parse file, connect to HMRC, send
+                  quarterly update, and export evidence are visual placeholders
+                  only.
                 </p>
                 <button
                   type="button"
                   disabled
                   className="mt-4 w-full cursor-not-allowed rounded-md bg-slate-300 px-4 py-2 text-sm font-semibold text-slate-600"
                 >
-                  HMRC connection not available
+                  Spreadsheet import not available
                 </button>
               </section>
             </aside>

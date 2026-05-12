@@ -3,7 +3,7 @@
 Last updated: 2026-05-12
 Repository: `leehaetu/QuarterLink`
 Default branch: `main`
-Status: QL-004 accepted by human review; QL-005 is the next active ticket and has not been started.
+Status: QL-005 accepted by human review; QL-006 is the next active ticket and has not been started.
 
 ## Confirmed Live Repo State At Start Of QL-002
 
@@ -35,7 +35,9 @@ Known branch state:
 - `QL-003` was documentation/specification only and did not implement product code, HMRC API calls, authentication, database storage, spreadsheet parsing, submissions, billing, practice workflows, or public website work.
 - `QL-004` is recorded as `GPT_ACCEPTED` after human review on 2026-05-12.
 - `QL-004` built a static/local guided app workspace shell only; no HMRC OAuth, HMRC API calls, authentication, database persistence, spreadsheet parsing, real submissions, billing, practice workflows, or production website functionality were added.
-- `QL-005` is the next active ticket, but it has not been started.
+- `QL-005` is recorded as `GPT_ACCEPTED` after human review on 2026-05-12.
+- `QL-005` built the local/static Route B spreadsheet workflow and evidence design only; no spreadsheet upload/parsing, HMRC OAuth, HMRC API calls, authentication, database persistence, real submissions, billing, practice workflows, public website functionality, or production evidence generation was added.
+- `QL-006` is the next active ticket, but it has not been started.
 - Codex did not mark any work `GPT_ACCEPTED` without human instruction.
 
 ## Accepted Completed Work
@@ -103,13 +105,13 @@ Not implemented:
 
 ## Correct Next Action
 
-After QL-004 human review, the next ticket should be QL-005:
+After QL-005 human review, the next ticket should be QL-006:
 
 ```text
-Spreadsheet Route B local workflow and evidence design.
+Auth, tenant, audit, secrets, and HMRC access architecture.
 ```
 
-Do not start QL-005 until explicitly instructed.
+Do not start QL-006 until explicitly instructed.
 
 ## Ticket Sequence
 
