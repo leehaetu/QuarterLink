@@ -91,16 +91,16 @@ const routeBSteps: RouteBStep[] = [
   {
     id: "declaration",
     label: "Declaration",
-    title: "Declaration placeholder before sending a quarterly update",
+    title: "Declaration placeholder for future quarterly update sending",
     summary:
       "A later ticket must define exact declaration text. This screen only shows the intended position in the workflow.",
     checklist: [
       "Tell the user they are reviewing a quarterly update.",
-      "Require read-only total review before a future send action.",
-      "Show that HMRC connection is still missing.",
+      "Keep read-only total review separate from any future send action.",
+      "Show sandbox OAuth status from the current QL-008 session state.",
       "Disable send and evidence export actions in the local preview.",
     ],
-    note: "QuarterLink is not connected to HMRC and cannot send anything from this screen.",
+    note: "Quarterly update sending remains disabled in QL-008.",
   },
 ];
 
@@ -198,6 +198,7 @@ const preflightCommand =
 interface WorkspaceShellProps {
   readonly hmrcSandboxOAuth: HmrcSandboxOAuthUiState;
   readonly ql008FraudCollector: Ql008FraudCollectorUiState;
+  readonly initialStepIndex?: number;
 }
 
 type SandboxDiscoveryResponse = Pick<
@@ -212,11 +213,28 @@ type SandboxDiscoveryResponse = Pick<
   readonly tokenSource?: string;
 };
 
+type Ql008EvidenceStatus = "not_run" | "passed" | "failed" | "unknown";
+type Ql008DiscoveryStatus = "not_run" | "discovered" | "failed" | "unknown";
+type Ql008SubmissionStatus = "not_attempted";
+
+interface Ql008RealState {
+  readonly demoAccessActive: boolean;
+  readonly oauthSessionPresent: boolean;
+  readonly fraudInputsCollected: boolean;
+  readonly fphValidationStatus: Ql008EvidenceStatus;
+  readonly businessDetailsStatus: Ql008DiscoveryStatus;
+  readonly obligationsStatus: Ql008DiscoveryStatus;
+  readonly submissionStatus: Ql008SubmissionStatus;
+}
+
 export function WorkspaceShell({
   hmrcSandboxOAuth,
   ql008FraudCollector,
+  initialStepIndex = 0,
 }: WorkspaceShellProps) {
-  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [activeStepIndex, setActiveStepIndex] = useState(() =>
+    clampStepIndex(initialStepIndex),
+  );
   const [sandboxDiscoveryResult, setSandboxDiscoveryResult] =
     useState<SandboxDiscoveryResponse>();
   const [sandboxDiscoveryError, setSandboxDiscoveryError] = useState<string>();
@@ -226,6 +244,7 @@ export function WorkspaceShell({
     () => `${activeStepIndex + 1} of ${routeBSteps.length}`,
     [activeStepIndex],
   );
+  const ql008RealState = buildQl008RealState(hmrcSandboxOAuth);
 
   const goToPrevious = () => {
     setActiveStepIndex((current) => Math.max(0, current - 1));
@@ -395,6 +414,10 @@ export function WorkspaceShell({
                 <p className="mt-5 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
                   {activeStep.note}
                 </p>
+
+                {activeStep.id === "declaration" ? (
+                  <Ql008DeclarationRealStatePanel state={ql008RealState} />
+                ) : null}
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <button
@@ -617,7 +640,7 @@ export function WorkspaceShell({
                     </p>
                     <p className="mt-1 leading-6 text-slate-700">
                       The connect button remains disabled until demo access and
-                      sandbox OAuth configuration are ready.
+                      sandbox OAuth configuration are present.
                     </p>
                   </li>
                 </ol>
@@ -651,7 +674,7 @@ export function WorkspaceShell({
                     }`}
                   >
                     {hmrcSandboxOAuth.canStartOAuth
-                      ? "Ready to start OAuth"
+                      ? "OAuth start available"
                       : "Local setup needed"}
                   </span>
                 </div>
@@ -763,8 +786,8 @@ export function WorkspaceShell({
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-slate-700">
                     {hmrcSandboxOAuth.sandboxTokenSessionActive
-                      ? "Sandbox OAuth token session is active server-side. Token values are not displayed in the browser."
-                      : "Complete HMRC sandbox OAuth to create a temporary server-side sandbox token session."}
+                      ? "HMRC sandbox OAuth connected. No HMRC API evidence calls have been made. No HMRC submission has been made."
+                      : "HMRC sandbox OAuth not connected. Connect through the QL-008 sandbox connection panel first."}
                   </p>
                   <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-700">
                     {hmrcRemainingBlockers.map((blocker) => (
@@ -928,6 +951,165 @@ export function WorkspaceShell({
       </div>
     </main>
   );
+}
+
+function clampStepIndex(index: number): number {
+  if (!Number.isInteger(index)) {
+    return 0;
+  }
+
+  return Math.min(Math.max(index, 0), routeBSteps.length - 1);
+}
+
+function buildQl008RealState(
+  hmrcSandboxOAuth: HmrcSandboxOAuthUiState,
+): Ql008RealState {
+  return {
+    demoAccessActive: hmrcSandboxOAuth.sandboxDemoSessionActive,
+    oauthSessionPresent: hmrcSandboxOAuth.sandboxTokenSessionActive,
+    fraudInputsCollected: false,
+    fphValidationStatus: "not_run",
+    businessDetailsStatus: "not_run",
+    obligationsStatus: "not_run",
+    submissionStatus: "not_attempted",
+  };
+}
+
+function Ql008DeclarationRealStatePanel({
+  state,
+}: {
+  readonly state: Ql008RealState;
+}) {
+  return (
+    <section
+      aria-labelledby="ql008-real-state-heading"
+      className="mt-5 rounded-md border border-slate-200 bg-[#fafbf8] px-4 py-4"
+    >
+      <h3
+        id="ql008-real-state-heading"
+        className="text-sm font-semibold text-slate-950"
+      >
+        QL-008 real state
+      </h3>
+      <p className="mt-2 text-sm leading-6 text-slate-700">
+        {state.oauthSessionPresent
+          ? "HMRC sandbox OAuth connected. No HMRC API evidence calls or submissions have been made yet."
+          : "HMRC sandbox OAuth not connected. Connect through the QL-008 sandbox connection panel first."}
+      </p>
+      <dl className="mt-3 grid gap-2 text-sm leading-6 text-slate-700">
+        <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+          <dt className="font-semibold text-slate-950">Demo access</dt>
+          <dd>
+            {state.demoAccessActive
+              ? "Demo access active"
+              : "Demo access not active"}
+          </dd>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+          <dt className="font-semibold text-slate-950">
+            HMRC sandbox OAuth
+          </dt>
+          <dd>
+            {state.oauthSessionPresent
+              ? "HMRC sandbox OAuth connected"
+              : "HMRC sandbox OAuth not connected"}
+          </dd>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+          <dt className="font-semibold text-slate-950">
+            HMRC API evidence calls
+          </dt>
+          <dd>No HMRC API evidence calls have been made</dd>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+          <dt className="font-semibold text-slate-950">
+            Fraud-prevention inputs
+          </dt>
+          <dd>{formatFraudInputStatus(state.fraudInputsCollected)}</dd>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+          <dt className="font-semibold text-slate-950">
+            Test Fraud Prevention Headers
+          </dt>
+          <dd>{formatFphStatus(state.fphValidationStatus)}</dd>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+          <dt className="font-semibold text-slate-950">
+            Business Details and Obligations
+          </dt>
+          <dd>
+            {formatBusinessAndObligationsStatus(
+              state.businessDetailsStatus,
+              state.obligationsStatus,
+            )}
+          </dd>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+          <dt className="font-semibold text-slate-950">Submission</dt>
+          <dd>{formatSubmissionStatus(state.submissionStatus)}</dd>
+        </div>
+      </dl>
+      <button
+        type="button"
+        disabled
+        className="mt-4 w-full cursor-not-allowed rounded-md bg-slate-300 px-4 py-2 text-sm font-semibold text-slate-600"
+      >
+        Quarterly update sending remains disabled
+      </button>
+    </section>
+  );
+}
+
+function formatFraudInputStatus(collected: boolean): string {
+  return collected
+    ? "Fraud-prevention inputs collected"
+    : "Fraud-prevention inputs not yet verified on this screen";
+}
+
+function formatFphStatus(status: Ql008EvidenceStatus): string {
+  if (status === "passed") {
+    return "Fraud-prevention validation passed";
+  }
+
+  if (status === "failed") {
+    return "Fraud-prevention validation failed";
+  }
+
+  if (status === "unknown") {
+    return "Fraud-prevention validation status unknown";
+  }
+
+  return "Fraud-prevention validation still required";
+}
+
+function formatBusinessAndObligationsStatus(
+  businessDetailsStatus: Ql008DiscoveryStatus,
+  obligationsStatus: Ql008DiscoveryStatus,
+): string {
+  if (
+    businessDetailsStatus === "discovered" &&
+    obligationsStatus === "discovered"
+  ) {
+    return "Business Details and Obligations discovered";
+  }
+
+  if (businessDetailsStatus === "failed" || obligationsStatus === "failed") {
+    return "Business Details or Obligations discovery failed";
+  }
+
+  if (businessDetailsStatus === "unknown" || obligationsStatus === "unknown") {
+    return "Business Details and Obligations discovery status unknown";
+  }
+
+  return "Business Details and Obligations discovery still required";
+}
+
+function formatSubmissionStatus(status: Ql008SubmissionStatus): string {
+  if (status === "not_attempted") {
+    return "No HMRC submission has been made";
+  }
+
+  return "No HMRC submission has been made";
 }
 
 function readDiscoveryError(payload: unknown): string {
