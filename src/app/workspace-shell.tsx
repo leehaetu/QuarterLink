@@ -1,7 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { HmrcSandboxOAuthUiState } from "@/server/hmrc";
+import { Ql008FraudPreventionCollector } from "./ql008-fraud-prevention-collector";
+import type {
+  HmrcSandboxOAuthUiState,
+  Ql008FraudCollectorUiState,
+} from "@/server/hmrc";
 
 type RouteBStep = {
   id: string;
@@ -193,9 +197,13 @@ const preflightCommand =
 
 interface WorkspaceShellProps {
   readonly hmrcSandboxOAuth: HmrcSandboxOAuthUiState;
+  readonly ql008FraudCollector: Ql008FraudCollectorUiState;
 }
 
-export function WorkspaceShell({ hmrcSandboxOAuth }: WorkspaceShellProps) {
+export function WorkspaceShell({
+  hmrcSandboxOAuth,
+  ql008FraudCollector,
+}: WorkspaceShellProps) {
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const activeStep = routeBSteps[activeStepIndex];
   const stepCount = useMemo(
@@ -491,6 +499,10 @@ export function WorkspaceShell({ hmrcSandboxOAuth }: WorkspaceShellProps) {
             </div>
 
             <aside className="space-y-6">
+              <Ql008FraudPreventionCollector
+                collector={ql008FraudCollector}
+              />
+
               <section
                 aria-labelledby="hmrc-sandbox-heading"
                 className="rounded-lg border border-teal-700 bg-white p-5 shadow-sm shadow-slate-200/50"
