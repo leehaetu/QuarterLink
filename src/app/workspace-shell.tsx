@@ -577,7 +577,7 @@ export function WorkspaceShell({
                       Redirect URI
                     </dt>
                     <dd className="mt-1 break-all font-mono text-xs text-slate-800">
-                      {hmrcSandboxOAuth.requiredRedirectUri}
+                      {hmrcSandboxOAuth.redirectUri}
                     </dd>
                   </div>
                   <div className="rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-2">

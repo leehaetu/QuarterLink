@@ -122,7 +122,7 @@ export function validateHmrcSandboxConfig(
     HMRC_SANDBOX_AUTH_BASE_URL,
     issues,
   );
-  validateRedirectUri(source.HMRC_SANDBOX_REDIRECT_URI, issues);
+  validateHmrcSandboxRedirectUri(source.HMRC_SANDBOX_REDIRECT_URI, issues);
 
   const scopes = splitScopes(source.HMRC_SANDBOX_SCOPES);
   if (isPresent(source.HMRC_SANDBOX_SCOPES) && scopes.length === 0) {
@@ -256,7 +256,7 @@ function parseOrigin(value: string): string | undefined {
   }
 }
 
-function validateRedirectUri(
+export function validateHmrcSandboxRedirectUri(
   value: string | undefined,
   issues: HmrcValidationIssue[],
 ): void {

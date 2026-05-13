@@ -1,7 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { HmrcSandboxClient } from "./client";
-import { loadHmrcSandboxConfig } from "./config";
-import type { HmrcSandboxConfig } from "./types";
+import {
+  loadHmrcSandboxConfig,
+  validateHmrcSandboxRedirectUri,
+} from "./config";
+import type { HmrcSandboxConfig, HmrcValidationIssue } from "./types";
 
 type EnvironmentSource = Readonly<Record<string, string | undefined>>;
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
@@ -148,6 +151,7 @@ export function getSandboxOAuthUiState(
   const invalidEnvMessages: string[] = [];
   const appEnvironment = source.APP_ENV?.trim() ?? "";
   const hmrcEnvironment = source.HMRC_ENV?.trim() ?? "";
+  const redirectUri = source.HMRC_SANDBOX_REDIRECT_URI?.trim() ?? "";
   const isLocalOrSandboxMode =
     appEnvironment === "local" || appEnvironment === "sandbox";
   const canUseSandboxDemoSession =
@@ -163,13 +167,10 @@ export function getSandboxOAuthUiState(
     invalidEnvMessages.push("HMRC_ENV must be sandbox for this flow.");
   }
 
-  if (
-    isPresent(source.HMRC_SANDBOX_REDIRECT_URI) &&
-    source.HMRC_SANDBOX_REDIRECT_URI.trim() !== HMRC_SANDBOX_REQUIRED_REDIRECT_URI
-  ) {
-    invalidEnvMessages.push(
-      `HMRC_SANDBOX_REDIRECT_URI must be ${HMRC_SANDBOX_REQUIRED_REDIRECT_URI}.`,
-    );
+  if (isPresent(redirectUri)) {
+    const redirectUriIssues: HmrcValidationIssue[] = [];
+    validateHmrcSandboxRedirectUri(redirectUri, redirectUriIssues);
+    invalidEnvMessages.push(...redirectUriIssues.map((issue) => issue.message));
   }
 
   if (
@@ -184,7 +185,7 @@ export function getSandboxOAuthUiState(
   return {
     appEnvironment: appEnvironment || "not set",
     hmrcEnvironment: hmrcEnvironment || "not set",
-    redirectUri: source.HMRC_SANDBOX_REDIRECT_URI?.trim() || "not set",
+    redirectUri: redirectUri || "not set",
     startPath: HMRC_SANDBOX_OAUTH_START_PATH,
     callbackPath: HMRC_SANDBOX_OAUTH_CALLBACK_PATH,
     demoSessionPath: HMRC_SANDBOX_DEMO_SESSION_PATH,

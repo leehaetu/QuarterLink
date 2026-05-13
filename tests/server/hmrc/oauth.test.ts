@@ -26,6 +26,9 @@ const oauthEnv = {
   HMRC_SANDBOX_TEST_USER_TYPE: "individual",
 };
 
+const railwayRedirectUri =
+  "https://quarterlink-production.up.railway.app/api/hmrc/oauth/callback";
+
 describe("HMRC sandbox OAuth readiness", () => {
   test("builds an individual sandbox PKCE authorisation URL without the client secret or verifier", () => {
     const url = buildSandboxOAuthAuthorisationUrl(oauthEnv);
@@ -68,9 +71,67 @@ describe("HMRC sandbox OAuth readiness", () => {
     assert.equal(state.canStartOAuth, true);
     assert.equal(state.canUseSandboxDemoSession, true);
     assert.equal(state.sandboxDemoSessionActive, true);
+    assert.equal(
+      state.redirectUri,
+      "http://localhost:3000/api/hmrc/oauth/callback",
+    );
     assert.equal(state.requiredRedirectUri, HMRC_SANDBOX_REQUIRED_REDIRECT_URI);
     assert.deepEqual(state.missingEnvVars, []);
+    assert.deepEqual(state.invalidEnvMessages, []);
     assert(!JSON.stringify(state).includes("unit-test-client-credential"));
+  });
+
+  test("accepts a Railway HTTPS redirect for UI readiness", () => {
+    const state = getSandboxOAuthUiState(
+      {
+        ...oauthEnv,
+        HMRC_SANDBOX_REDIRECT_URI: railwayRedirectUri,
+      },
+      {
+        sandboxDemoSessionActive: true,
+      },
+    );
+
+    assert.equal(state.canStartOAuth, true);
+    assert.equal(state.redirectUri, railwayRedirectUri);
+    assert.deepEqual(state.missingEnvVars, []);
+    assert.deepEqual(state.invalidEnvMessages, []);
+    assert(!JSON.stringify(state).includes("unit-test-client-credential"));
+  });
+
+  test("missing redirect disables UI readiness", () => {
+    const state = getSandboxOAuthUiState(
+      {
+        ...oauthEnv,
+        HMRC_SANDBOX_REDIRECT_URI: undefined,
+      },
+      {
+        sandboxDemoSessionActive: true,
+      },
+    );
+
+    assert.equal(state.canStartOAuth, false);
+    assert.equal(state.redirectUri, "not set");
+    assert(state.missingEnvVars.includes("HMRC_SANDBOX_REDIRECT_URI"));
+    assert.deepEqual(state.invalidEnvMessages, []);
+  });
+
+  test("malformed redirect disables UI readiness", () => {
+    const state = getSandboxOAuthUiState(
+      {
+        ...oauthEnv,
+        HMRC_SANDBOX_REDIRECT_URI: "not-a-url",
+      },
+      {
+        sandboxDemoSessionActive: true,
+      },
+    );
+
+    assert.equal(state.canStartOAuth, false);
+    assert.deepEqual(state.missingEnvVars, []);
+    assert(state.invalidEnvMessages.includes(
+      "HMRC_SANDBOX_REDIRECT_URI must be an absolute HTTPS URL, or HTTP localhost for local development.",
+    ));
   });
 
   test("requires the local sandbox demo session before OAuth can start", () => {
