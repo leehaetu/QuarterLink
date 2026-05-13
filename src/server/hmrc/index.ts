@@ -2,6 +2,7 @@ export * from "./client";
 export * from "./config";
 export * from "./device-id-cookie";
 export * from "./evidence";
+export * from "./fraud-encoding";
 export * from "./fraud-prevention-collector";
 export * from "./fraud-prevention";
 export * from "./oauth";

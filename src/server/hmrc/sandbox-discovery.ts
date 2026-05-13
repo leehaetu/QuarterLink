@@ -1,10 +1,13 @@
-import { assembleFraudPreventionHeaders } from "./fraud-prevention";
+import { buildWebAppViaServerFraudPreventionHeaders } from "./fraud-prevention";
 import { loadHmrcSandboxConfig } from "./config";
 import { redactEvidenceValue } from "./evidence";
 import type {
   FraudPreventionAssemblyInput,
+  FraudPreventionHeaderBuildStatus,
   FraudPreventionMissingValue,
   HmrcHeaders,
+  WebAppViaServerFraudPreventionBuildResult,
+  WebAppViaServerFraudPreventionInput,
 } from "./types";
 import { HMRC_SANDBOX_API_BASE_URL } from "./types";
 
@@ -23,6 +26,17 @@ export interface Ql008MissingFraudPreventionInput {
   readonly headerName: string;
   readonly variables: readonly string[];
   readonly reason: string;
+  readonly status?: string;
+}
+
+export interface Ql008FraudPreventionHeaderBuildSummary {
+  readonly redactedHeaders: HmrcHeaders;
+  readonly presentHeaderNames: readonly string[];
+  readonly missingHeaderNames: readonly string[];
+  readonly unavailableOnLocalhostHeaderNames: readonly string[];
+  readonly manualOverrideHeaderNames: readonly string[];
+  readonly statuses: readonly FraudPreventionHeaderBuildStatus[];
+  readonly testFraudPreventionHeadersRunnable: boolean;
 }
 
 export interface Ql008SandboxDiscoveryResult {
@@ -33,6 +47,7 @@ export interface Ql008SandboxDiscoveryResult {
   readonly blockers: readonly string[];
   readonly items: readonly Ql008SandboxDiscoveryItem[];
   readonly missingFraudPreventionInputs: readonly Ql008MissingFraudPreventionInput[];
+  readonly fraudPreventionHeaderBuild?: Ql008FraudPreventionHeaderBuildSummary;
   readonly fphApplicationToken?: Ql008FphApplicationTokenResult;
   readonly testFraudPreventionHeaders?: Ql008TestFraudPreventionHeadersResult;
   readonly businessDetails?: Ql008BusinessDetailsDiscoveryResult;
@@ -78,6 +93,7 @@ export interface Ql008ObligationsDiscoveryResult {
 interface FraudPreventionInputParseResult {
   readonly input?: FraudPreventionAssemblyInput;
   readonly missing: readonly Ql008MissingFraudPreventionInput[];
+  readonly headerBuild: WebAppViaServerFraudPreventionBuildResult;
 }
 
 interface ResolvedFphApplicationToken {
@@ -186,8 +202,6 @@ const APPLICATION_RESTRICTED_SCOPE_ENV = "HMRC_SANDBOX_FPH_SCOPES";
 const USER_RESTRICTED_TOKEN_ENV = "HMRC_SANDBOX_ACCESS_TOKEN";
 const ALLOW_CALLS_ENV = "QL_008_DISCOVERY_ALLOW_HMRC_CALLS";
 const TEST_FPH_ACCEPT = "application/vnd.hmrc.1.0+json";
-const BUSINESS_DETAILS_ACCEPT = "application/vnd.hmrc.2.0+json";
-const OBLIGATIONS_ACCEPT = "application/vnd.hmrc.3.0+json";
 const DEFAULT_HMRC_DISCOVERY_TIMEOUT_MS = 10_000;
 
 export async function runQl008SandboxDiscovery(
@@ -211,34 +225,30 @@ export async function runQl008SandboxDiscovery(
 
   const configResult = loadSandboxConfigItem(items, env);
   const fraudInputResult = buildFraudPreventionInputFromEnv(env);
+  const fraudHeaderBuildSummary = summariseFraudHeaderBuild(
+    fraudInputResult.headerBuild,
+    allowHmrcNetworkCalls,
+  );
   missingFraudPreventionInputs.push(...fraudInputResult.missing);
 
   recordTokenSource(items, env);
+
+  items.push({
+    check: "WEB_APP_VIA_SERVER fraud-prevention header builder",
+    status: fraudInputResult.headerBuild.ok ? "pass" : "block",
+    detail: formatFraudHeaderBuildDetail(fraudHeaderBuildSummary),
+  });
 
   if (fraudInputResult.missing.length > 0 || fraudInputResult.input === undefined) {
     items.push({
       check: "WEB_APP_VIA_SERVER fraud-prevention inputs",
       status: "block",
-      detail: `Missing required local inputs for: ${formatHeaderList(
-        fraudInputResult.missing.map((item) => item.headerName),
-      )}.`,
-    });
-  }
-
-  const assembledHeaders =
-    fraudInputResult.input === undefined
-      ? undefined
-      : assembleFraudPreventionHeaders(fraudInputResult.input);
-
-  if (assembledHeaders !== undefined && !assembledHeaders.ok) {
-    missingFraudPreventionInputs.push(
-      ...assembledHeaders.missing.map(toMissingFraudInput),
-    );
-    items.push({
-      check: "WEB_APP_VIA_SERVER fraud-prevention header assembly",
-      status: "block",
-      detail: `Missing or invalid fraud-prevention values: ${formatHeaderList(
-        assembledHeaders.missing.map((item) => item.headerName),
+      detail: `Fraud-prevention headers not yet runnable. Missing: ${formatHeaderList(
+        fraudHeaderBuildSummary.missingHeaderNames,
+      )}; unavailable on localhost: ${formatHeaderList(
+        fraudHeaderBuildSummary.unavailableOnLocalhostHeaderNames,
+      )}; manual override required: ${formatHeaderList(
+        fraudHeaderBuildSummary.manualOverrideHeaderNames,
       )}.`,
     });
   }
@@ -254,8 +264,6 @@ export async function runQl008SandboxDiscovery(
 
   let testFraudPreventionHeaders: Ql008TestFraudPreventionHeadersResult | undefined;
   let fphApplicationToken: Ql008FphApplicationTokenResult | undefined;
-  let businessDetails: Ql008BusinessDetailsDiscoveryResult | undefined;
-  let obligations: Ql008ObligationsDiscoveryResult | undefined;
 
   const blockersBeforeNetwork = items
     .filter((item) => item.status === "block")
@@ -265,7 +273,7 @@ export async function runQl008SandboxDiscovery(
     allowHmrcNetworkCalls &&
     blockersBeforeNetwork.length === 0 &&
     configResult !== undefined &&
-    assembledHeaders?.ok === true
+    fraudInputResult.headerBuild.ok
   ) {
     const resolvedFphToken = await resolveFphApplicationToken({
       env,
@@ -307,7 +315,7 @@ export async function runQl008SandboxDiscovery(
     const fphResult = await validateFraudPreventionHeaders({
       apiBaseUrl: configResult.apiBaseUrl,
       applicationRestrictedToken: resolvedFphToken.accessToken,
-      fraudPreventionHeaders: assembledHeaders.headers,
+      fraudPreventionHeaders: fraudInputResult.headerBuild.headers,
       fetchImpl: input.fetchImpl ?? fetch,
       timeoutMs: httpTimeoutMs,
     });
@@ -323,62 +331,20 @@ export async function runQl008SandboxDiscovery(
     });
 
     if (fphResult.passed) {
-      const userRestrictedToken = optionalEnv(env, USER_RESTRICTED_TOKEN_ENV);
-
-      if (userRestrictedToken === undefined) {
-        items.push({
-          check: "Fresh user-restricted OAuth token",
-          status: "block",
-          detail: `${USER_RESTRICTED_TOKEN_ENV} is required for read-only Business Details and Obligations discovery. Value not displayed.`,
-        });
-      } else {
-        businessDetails = await discoverBusinessDetails({
-          apiBaseUrl: configResult.apiBaseUrl,
-          userRestrictedToken,
-          nino: requirePresentEnv(env, "HMRC_SANDBOX_TEST_NINO"),
-          fraudPreventionHeaders: assembledHeaders.headers,
-          govTestScenario: optionalEnv(
-            env,
-            "HMRC_SANDBOX_BUSINESS_DETAILS_GOV_TEST_SCENARIO",
-          ),
-          fetchImpl: input.fetchImpl ?? fetch,
-          timeoutMs: httpTimeoutMs,
-        });
-        hmrcNetworkCallsAttempted = true;
-
-        items.push({
+      items.push(
+        {
           check: "Business Details read-only discovery",
-          status: businessDetails.passed ? "pass" : "block",
-          detail: businessDetails.passed
-            ? `Read-only Business Details discovery found ${businessDetails.selfEmploymentBusinessIds.length} self-employment businessId value(s).`
-            : "Read-only Business Details discovery did not return a usable self-employment businessId.",
-        });
-
-        if (businessDetails.passed) {
-          obligations = await discoverObligations({
-            apiBaseUrl: configResult.apiBaseUrl,
-            userRestrictedToken,
-            nino: requirePresentEnv(env, "HMRC_SANDBOX_TEST_NINO"),
-            businessId: businessDetails.selfEmploymentBusinessIds[0],
-            fraudPreventionHeaders: assembledHeaders.headers,
-            govTestScenario: optionalEnv(
-              env,
-              "HMRC_SANDBOX_OBLIGATIONS_GOV_TEST_SCENARIO",
-            ),
-            fetchImpl: input.fetchImpl ?? fetch,
-            timeoutMs: httpTimeoutMs,
-          });
-          hmrcNetworkCallsAttempted = true;
-
-          items.push({
-            check: "Obligations read-only discovery",
-            status: obligations.passed ? "pass" : "block",
-            detail: obligations.passed
-              ? `Read-only Obligations discovery found ${obligations.openObligationCount} open obligation(s) from ${obligations.obligationCount} obligation record(s).`
-              : "Read-only Obligations discovery did not return usable open self-employment obligation context.",
-          });
-        }
-      }
+          status: "skip",
+          detail:
+            "Skipped in this QL-008 fraud-header builder consolidation step. No Business Details call was made.",
+        },
+        {
+          check: "Obligations read-only discovery",
+          status: "skip",
+          detail:
+            "Skipped in this QL-008 fraud-header builder consolidation step. No Obligations call was made.",
+        },
+      );
     }
   }
 
@@ -396,103 +362,154 @@ export async function runQl008SandboxDiscovery(
     missingFraudPreventionInputs: dedupeMissingFraudInputs(
       missingFraudPreventionInputs,
     ),
+    fraudPreventionHeaderBuild: fraudHeaderBuildSummary,
     ...(fphApplicationToken === undefined ? {} : { fphApplicationToken }),
     ...(testFraudPreventionHeaders === undefined
       ? {}
       : { testFraudPreventionHeaders }),
-    ...(businessDetails === undefined ? {} : { businessDetails }),
-    ...(obligations === undefined ? {} : { obligations }),
   };
 }
 
 export function buildFraudPreventionInputFromEnv(
   env: EnvironmentSource = process.env,
 ): FraudPreventionInputParseResult {
-  const missing = REQUIRED_FPH_ENV_INPUTS.flatMap((field) => {
-    const missingVariables = field.variables.filter((variable) =>
-      !isPresent(env[variable]),
-    );
+  const partialInput = buildPartialFraudPreventionInputFromEnv(env);
+  const headerBuild = buildWebAppViaServerFraudPreventionHeaders(partialInput);
+  const missing =
+    headerBuild.ok === true
+      ? []
+      : headerBuild.missing.map(toMissingFraudInput);
 
-    if (missingVariables.length === 0) {
-      return [];
-    }
-
-    return [
-      {
-        headerName: field.headerName,
-        variables: missingVariables,
-        reason: field.reason,
-      },
-    ];
-  });
-
-  if (missing.length > 0) {
-    return { missing };
+  if (!headerBuild.ok) {
+    return { missing, headerBuild };
   }
 
   const input: FraudPreventionAssemblyInput = {
     client: {
-      browserJsUserAgent: requirePresentEnv(
-        env,
-        "QL_008_FRAUD_BROWSER_JS_USER_AGENT",
-      ),
-      deviceId: requirePresentEnv(env, "QL_008_FRAUD_DEVICE_ID"),
-      multiFactor: [
-        {
-          type: parseMfaType(requirePresentEnv(env, "QL_008_FRAUD_MFA_TYPE")),
-          timestamp: requirePresentEnv(env, "QL_008_FRAUD_MFA_TIMESTAMP"),
-          uniqueReference: requirePresentEnv(
-            env,
-            "QL_008_FRAUD_MFA_UNIQUE_REFERENCE",
-          ),
-        },
-      ],
-      screens: [
-        {
-          width: parseRequiredInteger(env, "QL_008_FRAUD_SCREEN_WIDTH"),
-          height: parseRequiredInteger(env, "QL_008_FRAUD_SCREEN_HEIGHT"),
-          scalingFactor: parseRequiredNumber(
-            env,
-            "QL_008_FRAUD_SCREEN_SCALING_FACTOR",
-          ),
-          colourDepth: parseRequiredInteger(
-            env,
-            "QL_008_FRAUD_SCREEN_COLOUR_DEPTH",
-          ),
-        },
-      ],
-      timezone: requirePresentEnv(env, "QL_008_FRAUD_TIMEZONE"),
-      windowSize: {
-        width: parseRequiredInteger(env, "QL_008_FRAUD_WINDOW_WIDTH"),
-        height: parseRequiredInteger(env, "QL_008_FRAUD_WINDOW_HEIGHT"),
-      },
+      browserJsUserAgent: partialInput.client.browserJsUserAgent ?? "",
+      deviceId: partialInput.client.deviceId ?? "",
+      multiFactor: partialInput.client.multiFactor,
+      screens: partialInput.client.screens ?? [],
+      timezone: partialInput.client.timezone ?? "",
+      windowSize: partialInput.client.windowSize ?? { width: 0, height: 0 },
     },
     server: {
-      clientPublicIp: requirePresentEnv(env, "QL_008_FRAUD_CLIENT_PUBLIC_IP"),
-      clientPublicIpTimestamp: requirePresentEnv(
+      clientPublicIp: partialInput.server.clientPublicIp ?? "",
+      clientPublicIpTimestamp: partialInput.server.clientPublicIpTimestamp ?? "",
+      clientPublicPort: partialInput.server.clientPublicPort ?? 0,
+      clientUserIds: partialInput.server.clientUserIds ?? {},
+      vendorForwarded: partialInput.server.vendorForwarded ?? [],
+      vendorLicenseIds: partialInput.server.vendorLicenseIds,
+      vendorProductName: partialInput.server.vendorProductName ?? "QuarterLink",
+      vendorPublicIp: partialInput.server.vendorPublicIp ?? "",
+      vendorVersion: partialInput.server.vendorVersion ?? {},
+    },
+  };
+
+  return { input, missing, headerBuild };
+}
+
+function buildPartialFraudPreventionInputFromEnv(
+  env: EnvironmentSource,
+): WebAppViaServerFraudPreventionInput {
+  const clientUserIdKey = optionalEnv(env, "QL_008_FRAUD_CLIENT_USER_ID_KEY");
+  const clientUserIdValue = optionalEnv(env, "QL_008_FRAUD_CLIENT_USER_ID_VALUE");
+  const vendorLicenseKey = optionalEnv(env, "QL_008_FRAUD_VENDOR_LICENSE_ID_KEY");
+  const vendorLicenseValue = optionalEnv(
+    env,
+    "QL_008_FRAUD_VENDOR_LICENSE_ID_VALUE",
+  );
+  const vendorForwardedBy = optionalEnv(env, "QL_008_FRAUD_VENDOR_FORWARDED_BY");
+  const vendorForwardedFor = optionalEnv(env, "QL_008_FRAUD_VENDOR_FORWARDED_FOR");
+  const screenWidth = parseOptionalInteger(env, "QL_008_FRAUD_SCREEN_WIDTH");
+  const screenHeight = parseOptionalInteger(env, "QL_008_FRAUD_SCREEN_HEIGHT");
+  const screenScalingFactor = parseOptionalNumber(
+    env,
+    "QL_008_FRAUD_SCREEN_SCALING_FACTOR",
+  );
+  const screenColourDepth = parseOptionalInteger(
+    env,
+    "QL_008_FRAUD_SCREEN_COLOUR_DEPTH",
+  );
+  const windowWidth = parseOptionalInteger(env, "QL_008_FRAUD_WINDOW_WIDTH");
+  const windowHeight = parseOptionalInteger(env, "QL_008_FRAUD_WINDOW_HEIGHT");
+  const mfaType = optionalEnv(env, "QL_008_FRAUD_MFA_TYPE");
+  const mfaTimestamp = optionalEnv(env, "QL_008_FRAUD_MFA_TIMESTAMP");
+  const mfaUniqueReference = optionalEnv(
+    env,
+    "QL_008_FRAUD_MFA_UNIQUE_REFERENCE",
+  );
+
+  return {
+    localSandbox: env.APP_ENV?.trim() === "local" && env.HMRC_ENV?.trim() === "sandbox",
+    client: {
+      browserJsUserAgent: optionalEnv(env, "QL_008_FRAUD_BROWSER_JS_USER_AGENT"),
+      deviceId: optionalEnv(env, "QL_008_FRAUD_DEVICE_ID"),
+      multiFactor:
+        mfaType === undefined ||
+        mfaTimestamp === undefined ||
+        mfaUniqueReference === undefined
+          ? undefined
+          : [
+              {
+                type: parseMfaType(mfaType),
+                timestamp: mfaTimestamp,
+                uniqueReference: mfaUniqueReference,
+              },
+            ],
+      screens:
+        screenWidth === undefined ||
+        screenHeight === undefined ||
+        screenScalingFactor === undefined ||
+        screenColourDepth === undefined
+          ? undefined
+          : [
+              {
+                width: screenWidth,
+                height: screenHeight,
+                scalingFactor: screenScalingFactor,
+                colourDepth: screenColourDepth,
+              },
+            ],
+      timezone: optionalEnv(env, "QL_008_FRAUD_TIMEZONE"),
+      windowSize:
+        windowWidth === undefined || windowHeight === undefined
+          ? undefined
+          : {
+              width: windowWidth,
+              height: windowHeight,
+            },
+    },
+    server: {
+      clientPublicIp: optionalEnv(env, "QL_008_FRAUD_CLIENT_PUBLIC_IP"),
+      clientPublicIpTimestamp: optionalEnv(
         env,
         "QL_008_FRAUD_CLIENT_PUBLIC_IP_TIMESTAMP",
       ),
-      clientPublicPort: parseRequiredInteger(
+      clientPublicPort: parseOptionalInteger(
         env,
         "QL_008_FRAUD_CLIENT_PUBLIC_PORT",
       ),
-      clientUserIds: {
-        [requirePresentEnv(env, "QL_008_FRAUD_CLIENT_USER_ID_KEY")]:
-          requirePresentEnv(env, "QL_008_FRAUD_CLIENT_USER_ID_VALUE"),
-      },
-      vendorForwarded: [
-        {
-          by: requirePresentEnv(env, "QL_008_FRAUD_VENDOR_FORWARDED_BY"),
-          for: requirePresentEnv(env, "QL_008_FRAUD_VENDOR_FORWARDED_FOR"),
-        },
-      ],
-      vendorLicenseIds: {
-        [requirePresentEnv(env, "QL_008_FRAUD_VENDOR_LICENSE_ID_KEY")]:
-          requirePresentEnv(env, "QL_008_FRAUD_VENDOR_LICENSE_ID_VALUE"),
-      },
-      vendorProductName: optionalEnv(env, "QL_008_FRAUD_VENDOR_PRODUCT_NAME") ?? "QuarterLink",
-      vendorPublicIp: requirePresentEnv(env, "QL_008_FRAUD_VENDOR_PUBLIC_IP"),
+      clientUserIds:
+        clientUserIdKey === undefined || clientUserIdValue === undefined
+          ? undefined
+          : { [clientUserIdKey]: clientUserIdValue },
+      vendorForwarded:
+        vendorForwardedBy === undefined || vendorForwardedFor === undefined
+          ? undefined
+          : [
+              {
+                by: vendorForwardedBy,
+                for: vendorForwardedFor,
+              },
+            ],
+      vendorLicenseIds:
+        vendorLicenseKey === undefined || vendorLicenseValue === undefined
+          ? undefined
+          : { [vendorLicenseKey]: vendorLicenseValue },
+      vendorProductName:
+        optionalEnv(env, "QL_008_FRAUD_VENDOR_PRODUCT_NAME") ?? "QuarterLink",
+      vendorPublicIp: optionalEnv(env, "QL_008_FRAUD_VENDOR_PUBLIC_IP"),
       vendorVersion: {
         quarterlink:
           optionalEnv(env, "QL_008_FRAUD_VENDOR_VERSION") ??
@@ -501,8 +518,52 @@ export function buildFraudPreventionInputFromEnv(
       },
     },
   };
+}
 
-  return { input, missing };
+function summariseFraudHeaderBuild(
+  build: WebAppViaServerFraudPreventionBuildResult,
+  allowHmrcNetworkCalls: boolean,
+): Ql008FraudPreventionHeaderBuildSummary {
+  const statuses = build.statuses;
+
+  return {
+    redactedHeaders: build.redactedHeaders,
+    presentHeaderNames: headerNamesWithStatus(statuses, "present"),
+    missingHeaderNames: headerNamesWithStatus(statuses, "missing"),
+    unavailableOnLocalhostHeaderNames: headerNamesWithStatus(
+      statuses,
+      "unavailable-on-localhost",
+    ),
+    manualOverrideHeaderNames: headerNamesWithStatus(
+      statuses,
+      "manual-override-required",
+    ),
+    statuses,
+    testFraudPreventionHeadersRunnable: build.ok && allowHmrcNetworkCalls,
+  };
+}
+
+function headerNamesWithStatus(
+  statuses: readonly FraudPreventionHeaderBuildStatus[],
+  status: FraudPreventionHeaderBuildStatus["status"],
+): readonly string[] {
+  return statuses
+    .filter((item) => item.status === status)
+    .map((item) => item.headerName);
+}
+
+function formatFraudHeaderBuildDetail(
+  summary: Ql008FraudPreventionHeaderBuildSummary,
+): string {
+  return [
+    `${summary.presentHeaderNames.length} header(s) buildable`,
+    `${summary.missingHeaderNames.length} missing`,
+    `${summary.unavailableOnLocalhostHeaderNames.length} unavailable on localhost`,
+    `${summary.manualOverrideHeaderNames.length} manual override required`,
+    summary.testFraudPreventionHeadersRunnable
+      ? "Test Fraud Prevention Headers is allowed to run."
+      : "Test Fraud Prevention Headers is not runnable in this dry-run/default state.",
+  ].join("; ");
 }
 
 async function validateFraudPreventionHeaders(input: {
@@ -540,110 +601,6 @@ async function validateFraudPreventionHeaders(input: {
       specVersion: getString(payload, "specVersion") ?? "not returned",
       errors: redactEvidenceValue(payload.errors ?? []),
       warnings: redactEvidenceValue(payload.warnings ?? []),
-    },
-  };
-}
-
-async function discoverBusinessDetails(input: {
-  readonly apiBaseUrl: string;
-  readonly userRestrictedToken: string;
-  readonly nino: string;
-  readonly fraudPreventionHeaders: HmrcHeaders;
-  readonly govTestScenario?: string;
-  readonly fetchImpl: FetchLike;
-  readonly timeoutMs: number;
-}): Promise<Ql008BusinessDetailsDiscoveryResult> {
-  const url = new URL(
-    `/individuals/business/details/${encodeURIComponent(input.nino)}/list`,
-    input.apiBaseUrl,
-  );
-  const headers: HmrcHeaders = {
-    Accept: BUSINESS_DETAILS_ACCEPT,
-    Authorization: `Bearer ${input.userRestrictedToken}`,
-    ...input.fraudPreventionHeaders,
-  };
-
-  if (input.govTestScenario !== undefined) {
-    headers["Gov-Test-Scenario"] = input.govTestScenario;
-  }
-
-  const response = await fetchWithTimeout(input.fetchImpl, url, {
-    method: "GET",
-    headers,
-  }, input.timeoutMs);
-  const payload = await readJson(response);
-  const selfEmploymentBusinessIds = extractSelfEmploymentBusinessIds(payload);
-
-  return {
-    attempted: true,
-    passed: response.ok && selfEmploymentBusinessIds.length > 0,
-    selfEmploymentBusinessIds,
-    safeMetadata: {
-      endpoint: "Business Details",
-      method: "GET",
-      pathTemplate: "/individuals/business/details/{nino}/list",
-      status: response.status,
-      ok: response.ok,
-      selfEmploymentBusinessIdCount: selfEmploymentBusinessIds.length,
-      errorCode: getString(payload, "code") ?? getString(payload, "errorCode"),
-    },
-  };
-}
-
-async function discoverObligations(input: {
-  readonly apiBaseUrl: string;
-  readonly userRestrictedToken: string;
-  readonly nino: string;
-  readonly businessId: string;
-  readonly fraudPreventionHeaders: HmrcHeaders;
-  readonly govTestScenario?: string;
-  readonly fetchImpl: FetchLike;
-  readonly timeoutMs: number;
-}): Promise<Ql008ObligationsDiscoveryResult> {
-  const url = new URL(
-    `/obligations/details/${encodeURIComponent(input.nino)}/income-and-expenditure`,
-    input.apiBaseUrl,
-  );
-  url.searchParams.set("typeOfBusiness", "self-employment");
-  url.searchParams.set("businessId", input.businessId);
-  url.searchParams.set("status", "open");
-
-  const headers: HmrcHeaders = {
-    Accept: OBLIGATIONS_ACCEPT,
-    Authorization: `Bearer ${input.userRestrictedToken}`,
-    ...input.fraudPreventionHeaders,
-  };
-
-  if (input.govTestScenario !== undefined) {
-    headers["Gov-Test-Scenario"] = input.govTestScenario;
-  }
-
-  const response = await fetchWithTimeout(input.fetchImpl, url, {
-    method: "GET",
-    headers,
-  }, input.timeoutMs);
-  const payload = await readJson(response);
-  const summary = summariseObligations(payload, input.businessId);
-
-  return {
-    attempted: true,
-    passed: response.ok && summary.openObligationCount > 0,
-    obligationCount: summary.obligationCount,
-    openObligationCount: summary.openObligationCount,
-    safeMetadata: {
-      endpoint: "Obligations",
-      method: "GET",
-      pathTemplate: "/obligations/details/{nino}/income-and-expenditure",
-      query: {
-        typeOfBusiness: "self-employment",
-        businessId: "[REDACTED]",
-        status: "open",
-      },
-      status: response.status,
-      ok: response.ok,
-      obligationCount: summary.obligationCount,
-      openObligationCount: summary.openObligationCount,
-      errorCode: getString(payload, "code") ?? getString(payload, "errorCode"),
     },
   };
 }
@@ -793,86 +750,6 @@ function recordTokenSource(
   );
 }
 
-function extractSelfEmploymentBusinessIds(payload: unknown): readonly string[] {
-  const ids = new Set<string>();
-
-  visitObjects(payload, (record) => {
-    const businessId = getString(record, "businessId");
-
-    if (businessId === undefined) {
-      return;
-    }
-
-    const descriptor = JSON.stringify(record).toLowerCase();
-    if (
-      descriptor.includes("self-employment") ||
-      descriptor.includes("selfemployment") ||
-      descriptor.includes("self employment")
-    ) {
-      ids.add(businessId);
-    }
-  });
-
-  return [...ids].sort();
-}
-
-function summariseObligations(
-  payload: unknown,
-  businessId: string,
-): { readonly obligationCount: number; readonly openObligationCount: number } {
-  let obligationCount = 0;
-  let openObligationCount = 0;
-
-  visitObjects(payload, (record) => {
-    if (getString(record, "businessId") !== businessId) {
-      return;
-    }
-
-    const obligationDetails = record.obligationDetails;
-    if (!Array.isArray(obligationDetails)) {
-      return;
-    }
-
-    for (const obligation of obligationDetails) {
-      if (obligation === null || typeof obligation !== "object") {
-        continue;
-      }
-
-      const obligationRecord = obligation as Readonly<Record<string, unknown>>;
-      obligationCount += 1;
-
-      if (getString(obligationRecord, "status")?.toLowerCase() === "open") {
-        openObligationCount += 1;
-      }
-    }
-  });
-
-  return { obligationCount, openObligationCount };
-}
-
-function visitObjects(
-  value: unknown,
-  visitor: (record: Readonly<Record<string, unknown>>) => void,
-): void {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      visitObjects(item, visitor);
-    }
-    return;
-  }
-
-  if (value === null || typeof value !== "object") {
-    return;
-  }
-
-  const record = value as Readonly<Record<string, unknown>>;
-  visitor(record);
-
-  for (const entry of Object.values(record)) {
-    visitObjects(entry, visitor);
-  }
-}
-
 function toMissingFraudInput(
   missing: FraudPreventionMissingValue,
 ): Ql008MissingFraudPreventionInput {
@@ -882,8 +759,9 @@ function toMissingFraudInput(
 
   return {
     headerName: missing.headerName,
-    variables: configuredField?.variables ?? [],
+    variables: missing.variables ?? configuredField?.variables ?? [],
     reason: missing.reason,
+    ...(missing.status === undefined ? {} : { status: missing.status }),
   };
 }
 
@@ -910,12 +788,34 @@ function parseMfaType(value: string): "TOTP" | "AUTH_CODE" | "OTHER" {
   return "OTHER";
 }
 
-function parseRequiredInteger(env: EnvironmentSource, variable: string): number {
-  return Number.parseInt(requirePresentEnv(env, variable), 10);
+function parseOptionalInteger(
+  env: EnvironmentSource,
+  variable: string,
+): number | undefined {
+  const value = optionalEnv(env, variable);
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isInteger(parsedValue) ? parsedValue : undefined;
 }
 
-function parseRequiredNumber(env: EnvironmentSource, variable: string): number {
-  return Number.parseFloat(requirePresentEnv(env, variable));
+function parseOptionalNumber(
+  env: EnvironmentSource,
+  variable: string,
+): number | undefined {
+  const value = optionalEnv(env, variable);
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsedValue = Number.parseFloat(value);
+
+  return Number.isFinite(parsedValue) ? parsedValue : undefined;
 }
 
 function formatHeaderList(headerNames: readonly string[]): string {

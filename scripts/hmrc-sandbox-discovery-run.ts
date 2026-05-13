@@ -27,6 +27,7 @@ async function main(): Promise<void> {
         hmrcSubmissionCallsAttempted: result.hmrcSubmissionCallsAttempted,
         blockers: result.blockers,
         missingFraudPreventionInputs: result.missingFraudPreventionInputs,
+        fraudPreventionHeaderBuild: result.fraudPreventionHeaderBuild,
         items: result.items,
         fphApplicationAuth: result.fphApplicationToken,
         testFraudPreventionHeaders: result.testFraudPreventionHeaders,

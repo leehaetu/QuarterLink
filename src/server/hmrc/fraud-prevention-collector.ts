@@ -9,7 +9,8 @@ export const QL_008_FRAUD_COLLECTOR_PATH =
 export type Ql008FraudInputStatus =
   | "collected"
   | "manual-override"
-  | "missing";
+  | "missing"
+  | "unavailable-on-localhost";
 
 export interface Ql008FraudCollectorUiState {
   readonly enabled: boolean;
@@ -221,6 +222,7 @@ export function collectQl008FraudPreventionInputs(input: {
       "trusted request IP headers",
       true,
       "No public client IP was available from the local request. Do not use localhost, private, or documentation IP ranges as a substitute.",
+      "unavailable-on-localhost",
     ),
     {
       name: "QL_008_FRAUD_CLIENT_PUBLIC_IP_TIMESTAMP",
@@ -239,6 +241,7 @@ export function collectQl008FraudPreventionInputs(input: {
       "trusted edge client source-port header",
       true,
       "The local request did not expose the client's public TCP source port. Do not use server ports such as 80, 443, or the localhost dev port.",
+      "unavailable-on-localhost",
     ),
     collectBrowserNumber(
       "QL_008_FRAUD_SCREEN_WIDTH",
@@ -282,6 +285,7 @@ export function collectQl008FraudPreventionInputs(input: {
       "public vendor request boundary",
       true,
       "Vendor forwarded data needs the public vendor IP that received the request. Localhost/private hops are intentionally not used.",
+      "unavailable-on-localhost",
     ),
     collectServerText(
       "QL_008_FRAUD_VENDOR_FORWARDED_FOR",
@@ -289,6 +293,7 @@ export function collectQl008FraudPreventionInputs(input: {
       "public client request boundary",
       true,
       "Vendor forwarded data needs the public client IP. Localhost/private hops are intentionally not used.",
+      "unavailable-on-localhost",
     ),
     ...MANUAL_LICENSE_VARIABLES,
     collectServerText(
@@ -297,6 +302,7 @@ export function collectQl008FraudPreventionInputs(input: {
       "trusted vendor public IP header",
       true,
       "No public vendor IP was available from the local request. Do not use localhost or a private interface as a substitute.",
+      "unavailable-on-localhost",
     ),
     {
       name: "QL_008_FRAUD_VENDOR_VERSION",
@@ -377,10 +383,11 @@ function collectServerText(
   source: string,
   sensitive: boolean,
   warning: string,
+  missingStatus: Ql008FraudInputStatus = "missing",
 ): Ql008FraudInputVariable {
   return {
     name,
-    status: isPresent(value) ? "collected" : "missing",
+    status: isPresent(value) ? "collected" : missingStatus,
     source,
     sensitive,
     value: isPresent(value) ? value.trim() : undefined,

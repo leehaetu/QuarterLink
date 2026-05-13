@@ -28,7 +28,7 @@ const validFraudEnv = {
   QL_008_FRAUD_MFA_TIMESTAMP: "2026-05-12T10:00Z",
   QL_008_FRAUD_MFA_UNIQUE_REFERENCE:
     "fc4b5fd6816f75a7c81fc8eaa9499d6a299bd803397166e8c4cf9280b801d62c",
-  QL_008_FRAUD_CLIENT_PUBLIC_IP: "198.51.100.10",
+  QL_008_FRAUD_CLIENT_PUBLIC_IP: "8.8.8.8",
   QL_008_FRAUD_CLIENT_PUBLIC_IP_TIMESTAMP: "2026-05-12T10:00:00.000Z",
   QL_008_FRAUD_CLIENT_PUBLIC_PORT: "52345",
   QL_008_FRAUD_SCREEN_WIDTH: "1920",
@@ -40,11 +40,11 @@ const validFraudEnv = {
   QL_008_FRAUD_CLIENT_USER_ID_VALUE: "user-123",
   QL_008_FRAUD_WINDOW_WIDTH: "1440",
   QL_008_FRAUD_WINDOW_HEIGHT: "900",
-  QL_008_FRAUD_VENDOR_FORWARDED_BY: "203.0.113.10",
-  QL_008_FRAUD_VENDOR_FORWARDED_FOR: "198.51.100.10",
+  QL_008_FRAUD_VENDOR_FORWARDED_BY: "1.1.1.1",
+  QL_008_FRAUD_VENDOR_FORWARDED_FOR: "8.8.8.8",
   QL_008_FRAUD_VENDOR_LICENSE_ID_KEY: "quarterlink",
   QL_008_FRAUD_VENDOR_LICENSE_ID_VALUE: "hashed-license-reference",
-  QL_008_FRAUD_VENDOR_PUBLIC_IP: "203.0.113.10",
+  QL_008_FRAUD_VENDOR_PUBLIC_IP: "1.1.1.1",
   QL_008_FRAUD_VENDOR_VERSION: "0.1.0",
 };
 
@@ -64,6 +64,11 @@ describe("QL-008 sandbox discovery", () => {
     assert(
       result.missingFraudPreventionInputs.some(
         (input) => input.headerName === "Gov-Client-Browser-JS-User-Agent",
+      ),
+    );
+    assert(
+      result.fraudPreventionHeaderBuild?.unavailableOnLocalhostHeaderNames.includes(
+        "Gov-Client-Public-IP",
       ),
     );
   });
@@ -89,7 +94,7 @@ describe("QL-008 sandbox discovery", () => {
     );
   });
 
-  test("gets an application-restricted token before FPH and read-only discovery", async () => {
+  test("gets an application-restricted token before FPH and stops before read-only discovery", async () => {
     const requestedUrls: string[] = [];
     const result = await runQl008SandboxDiscovery({
       env: {
@@ -125,9 +130,7 @@ describe("QL-008 sandbox discovery", () => {
             : (init?.headers as Record<string, string>).Authorization;
         assert.equal(
           authorization,
-          requestedUrls.length === 2
-            ? "Bearer fresh-application-token"
-            : "Bearer fresh-user-token",
+          "Bearer fresh-application-token",
         );
 
         if (requestedUrls.length === 2) {
@@ -138,47 +141,24 @@ describe("QL-008 sandbox discovery", () => {
           });
         }
 
-        if (requestedUrls.length === 3) {
-          return jsonResponse({
-            businessData: [
-              {
-                typeOfBusiness: "self-employment",
-                businessId: "XBIS12345678903",
-              },
-            ],
-          });
-        }
-
-        return jsonResponse({
-          obligations: [
-            {
-              typeOfBusiness: "self-employment",
-              businessId: "XBIS12345678903",
-              obligationDetails: [
-                {
-                  periodStartDate: "2026-04-06",
-                  periodEndDate: "2026-07-05",
-                  dueDate: "2026-08-07",
-                  status: "open",
-                },
-              ],
-            },
-          ],
-        });
+        assert.fail("Discovery must not call Business Details or Obligations in this step.");
       },
     });
 
     assert.equal(result.ok, true);
     assert.equal(result.hmrcNetworkCallsAttempted, true);
     assert.equal(result.hmrcSubmissionCallsAttempted, false);
-    assert.equal(requestedUrls.length, 4);
+    assert.equal(requestedUrls.length, 2);
     assert(requestedUrls[1].endsWith("/test/fraud-prevention-headers/validate"));
-    assert(requestedUrls[2].includes("/individuals/business/details/"));
-    assert(requestedUrls[3].includes("/obligations/details/"));
-    assert.deepEqual(result.businessDetails?.selfEmploymentBusinessIds, [
-      "XBIS12345678903",
-    ]);
-    assert.equal(result.obligations?.openObligationCount, 1);
+    assert.equal(result.businessDetails, undefined);
+    assert.equal(result.obligations, undefined);
+    assert(
+      result.items.some(
+        (item) =>
+          item.check === "Business Details read-only discovery" &&
+          item.status === "skip",
+      ),
+    );
     assert(!JSON.stringify(result).includes("fresh-application-token"));
     assert(!JSON.stringify(result).includes("fresh-user-token"));
     assert(!JSON.stringify(result).includes("sandbox-client-secret"));
@@ -296,6 +276,7 @@ describe("QL-008 sandbox discovery", () => {
     assert.equal(result.missing.length, 0);
     assert.equal(result.input?.server.vendorProductName, "QuarterLink");
     assert.equal(result.input?.server.clientPublicPort, 52345);
+    assert.equal(result.headerBuild.ok, true);
   });
 
   test("reports invalid numeric fraud inputs without throwing", async () => {

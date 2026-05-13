@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   assembleFraudPreventionHeaders,
+  buildWebAppViaServerFraudPreventionHeaders,
+  encodeHmrcKeyValue,
+  encodeHmrcScreens,
   HMRC_CONNECTION_METHOD_WEB_APP_VIA_SERVER,
   REDACTED_VALUE,
   requireFraudPreventionHeaders,
+  timezoneFromOffsetMinutes,
   type FraudPreventionAssemblyInput,
 } from "../../../src/server/hmrc";
 
@@ -37,7 +41,7 @@ function validFraudInput(): FraudPreventionAssemblyInput {
       },
     },
     server: {
-      clientPublicIp: "198.51.100.10",
+      clientPublicIp: "8.8.8.8",
       clientPublicIpTimestamp: "2026-05-12T10:00:00.000Z",
       clientPublicPort: 52345,
       clientUserIds: {
@@ -45,15 +49,15 @@ function validFraudInput(): FraudPreventionAssemblyInput {
       },
       vendorForwarded: [
         {
-          by: "203.0.113.10",
-          for: "198.51.100.10",
+          by: "1.1.1.1",
+          for: "8.8.8.8",
         },
       ],
       vendorLicenseIds: {
         quarterlink: "hashed-license-reference",
       },
       vendorProductName: "QuarterLink",
-      vendorPublicIp: "203.0.113.10",
+      vendorPublicIp: "1.1.1.1",
       vendorVersion: {
         quarterlink: "0.1.0",
       },
@@ -62,6 +66,28 @@ function validFraudInput(): FraudPreventionAssemblyInput {
 }
 
 describe("HMRC fraud-prevention header assembly", () => {
+  test("encodes HMRC key-value, screen, and timezone values", () => {
+    assert.equal(
+      encodeHmrcKeyValue({
+        "QuarterLink Web": "0.1.0",
+        "license/id": "hash value",
+      }),
+      "QuarterLink%20Web=0.1.0&license%2Fid=hash%20value",
+    );
+    assert.equal(
+      encodeHmrcScreens([
+        {
+          width: 1920,
+          height: 1080,
+          scalingFactor: 1.5,
+          colourDepth: 24,
+        },
+      ]),
+      "width=1920&height=1080&scaling-factor=1.5&colour-depth=24",
+    );
+    assert.equal(timezoneFromOffsetMinutes(-60), "UTC+01:00");
+  });
+
   test("assembles the full WEB_APP_VIA_SERVER header set", () => {
     const result = assembleFraudPreventionHeaders(validFraudInput());
 
@@ -81,6 +107,10 @@ describe("HMRC fraud-prevention header assembly", () => {
     assert.equal(
       result.headers["Gov-Vendor-Product-Name"],
       "QuarterLink",
+    );
+    assert.equal(
+      result.headers["Gov-Vendor-Forwarded"],
+      "by=1.1.1.1&for=8.8.8.8",
     );
   });
 
@@ -130,6 +160,76 @@ describe("HMRC fraud-prevention header assembly", () => {
       result.missing.some(
         (item) => item.headerName === "Gov-Client-Public-Port",
       ),
+    );
+  });
+
+  test("classifies localhost-limited and manual override values", () => {
+    const result = buildWebAppViaServerFraudPreventionHeaders({
+      localSandbox: true,
+      client: {
+        browserJsUserAgent: validFraudInput().client.browserJsUserAgent,
+        deviceId: validFraudInput().client.deviceId,
+        screens: validFraudInput().client.screens,
+        timezone: validFraudInput().client.timezone,
+        windowSize: validFraudInput().client.windowSize,
+      },
+      server: {
+        clientPublicIpTimestamp: "2026-05-12T10:00:00.000Z",
+        vendorProductName: "QuarterLink",
+        vendorVersion: {
+          quarterlink: "0.1.0",
+        },
+      },
+    });
+
+    if (result.ok) {
+      assert.fail("Expected local incomplete fraud headers to be blocked.");
+    }
+
+    assert(
+      result.statuses.some(
+        (item) =>
+          item.headerName === "Gov-Client-Public-IP" &&
+          item.status === "unavailable-on-localhost",
+      ),
+    );
+    assert(
+      result.statuses.some(
+        (item) =>
+          item.headerName === "Gov-Client-Multi-Factor" &&
+          item.status === "manual-override-required",
+      ),
+    );
+    assert.equal(result.redactedHeaders["Gov-Client-Device-ID"], REDACTED_VALUE);
+  });
+
+  test("does not accept documentation IP ranges as public request values", () => {
+    const result = assembleFraudPreventionHeaders({
+      ...validFraudInput(),
+      server: {
+        ...validFraudInput().server,
+        clientPublicIp: "198.51.100.10",
+        vendorPublicIp: "203.0.113.10",
+        vendorForwarded: [
+          {
+            by: "203.0.113.10",
+            for: "198.51.100.10",
+          },
+        ],
+      },
+    });
+
+    if (result.ok) {
+      assert.fail("Expected documentation IP ranges to be blocked.");
+    }
+
+    assert.deepEqual(
+      result.missing.map((item) => item.headerName).sort(),
+      [
+        "Gov-Client-Public-IP",
+        "Gov-Vendor-Forwarded",
+        "Gov-Vendor-Public-IP",
+      ],
     );
   });
 

@@ -49,7 +49,7 @@ function fraudHeaders() {
       },
     },
     server: {
-      clientPublicIp: "198.51.100.20",
+      clientPublicIp: "8.8.4.4",
       clientPublicIpTimestamp: "2026-05-12T10:00:00.000Z",
       clientPublicPort: 50123,
       clientUserIds: {
@@ -57,15 +57,15 @@ function fraudHeaders() {
       },
       vendorForwarded: [
         {
-          by: "203.0.113.20",
-          for: "198.51.100.20",
+          by: "1.0.0.1",
+          for: "8.8.4.4",
         },
       ],
       vendorLicenseIds: {
         quarterlink: "hashed-license-reference",
       },
       vendorProductName: "QuarterLink",
-      vendorPublicIp: "203.0.113.20",
+      vendorPublicIp: "1.0.0.1",
       vendorVersion: {
         quarterlink: "0.1.0",
       },

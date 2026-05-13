@@ -124,9 +124,51 @@ export interface FraudPreventionAssemblyInput {
   readonly server: ServerDerivedFraudPreventionValues;
 }
 
+export interface PartialClientCollectedFraudPreventionValues {
+  readonly browserJsUserAgent?: string;
+  readonly deviceId?: string;
+  readonly multiFactor?: readonly FraudPreventionMultiFactor[];
+  readonly screens?: readonly FraudPreventionScreen[];
+  readonly timezone?: string;
+  readonly windowSize?: FraudPreventionWindowSize;
+}
+
+export interface PartialServerDerivedFraudPreventionValues {
+  readonly clientPublicIp?: string;
+  readonly clientPublicIpTimestamp?: string;
+  readonly clientPublicPort?: number;
+  readonly clientUserIds?: Readonly<Record<string, string>>;
+  readonly vendorForwarded?: readonly FraudPreventionForwardedHop[];
+  readonly vendorLicenseIds?: Readonly<Record<string, string>>;
+  readonly vendorProductName?: string;
+  readonly vendorPublicIp?: string;
+  readonly vendorVersion?: Readonly<Record<string, string>>;
+}
+
+export interface WebAppViaServerFraudPreventionInput {
+  readonly client: PartialClientCollectedFraudPreventionValues;
+  readonly server: PartialServerDerivedFraudPreventionValues;
+  readonly localSandbox?: boolean;
+}
+
+export type FraudPreventionHeaderStatus =
+  | "present"
+  | "missing"
+  | "unavailable-on-localhost"
+  | "manual-override-required";
+
+export interface FraudPreventionHeaderBuildStatus {
+  readonly headerName: string;
+  readonly status: FraudPreventionHeaderStatus;
+  readonly reason: string;
+  readonly variables: readonly string[];
+}
+
 export interface FraudPreventionMissingValue {
   readonly headerName: string;
   readonly reason: string;
+  readonly status?: FraudPreventionHeaderStatus;
+  readonly variables?: readonly string[];
 }
 
 export type FraudPreventionAssemblyResult =
@@ -139,4 +181,19 @@ export type FraudPreventionAssemblyResult =
       readonly ok: false;
       readonly missing: readonly FraudPreventionMissingValue[];
       readonly redactedHeaders: HmrcHeaders;
+    };
+
+export type WebAppViaServerFraudPreventionBuildResult =
+  | {
+      readonly ok: true;
+      readonly headers: HmrcHeaders;
+      readonly redactedHeaders: HmrcHeaders;
+      readonly statuses: readonly FraudPreventionHeaderBuildStatus[];
+    }
+  | {
+      readonly ok: false;
+      readonly headers: HmrcHeaders;
+      readonly redactedHeaders: HmrcHeaders;
+      readonly statuses: readonly FraudPreventionHeaderBuildStatus[];
+      readonly missing: readonly FraudPreventionMissingValue[];
     };

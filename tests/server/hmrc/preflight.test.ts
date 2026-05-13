@@ -53,7 +53,7 @@ function fraudInput(): FraudPreventionAssemblyInput {
       },
     },
     server: {
-      clientPublicIp: "198.51.100.10",
+      clientPublicIp: "8.8.8.8",
       clientPublicIpTimestamp: "2026-05-12T10:00:00.000Z",
       clientPublicPort: 52345,
       clientUserIds: {
@@ -61,15 +61,15 @@ function fraudInput(): FraudPreventionAssemblyInput {
       },
       vendorForwarded: [
         {
-          by: "203.0.113.10",
-          for: "198.51.100.10",
+          by: "1.1.1.1",
+          for: "8.8.8.8",
         },
       ],
       vendorLicenseIds: {
         quarterlink: "hashed-license-reference",
       },
       vendorProductName: "QuarterLink",
-      vendorPublicIp: "203.0.113.10",
+      vendorPublicIp: "1.1.1.1",
       vendorVersion: {
         quarterlink: "0.1.0",
       },

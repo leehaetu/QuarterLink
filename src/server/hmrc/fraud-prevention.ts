@@ -1,14 +1,22 @@
 import { isIP } from "node:net";
+import {
+  encodeHmrcComponent,
+  encodeHmrcForwarded,
+  encodeHmrcKeyValue,
+  encodeHmrcMultiFactor,
+  encodeHmrcScreens,
+  encodeHmrcWindowSize,
+} from "./fraud-encoding";
 import { redactHeaders } from "./redaction";
 import type {
   FraudPreventionAssemblyInput,
   FraudPreventionAssemblyResult,
-  FraudPreventionForwardedHop,
+  FraudPreventionHeaderBuildStatus,
+  FraudPreventionHeaderStatus,
   FraudPreventionMissingValue,
-  FraudPreventionMultiFactor,
-  FraudPreventionScreen,
-  FraudPreventionWindowSize,
   HmrcHeaders,
+  WebAppViaServerFraudPreventionBuildResult,
+  WebAppViaServerFraudPreventionInput,
 } from "./types";
 
 export const HMRC_CONNECTION_METHOD_WEB_APP_VIA_SERVER = "WEB_APP_VIA_SERVER";
@@ -32,6 +40,45 @@ export const WEB_APP_VIA_SERVER_FRAUD_HEADER_NAMES = [
   "Gov-Vendor-Version",
 ] as const;
 
+const VARIABLE_MAP: Readonly<Record<string, readonly string[]>> = {
+  "Gov-Client-Browser-JS-User-Agent": ["QL_008_FRAUD_BROWSER_JS_USER_AGENT"],
+  "Gov-Client-Device-ID": ["QL_008_FRAUD_DEVICE_ID"],
+  "Gov-Client-Multi-Factor": [
+    "QL_008_FRAUD_MFA_TYPE",
+    "QL_008_FRAUD_MFA_TIMESTAMP",
+    "QL_008_FRAUD_MFA_UNIQUE_REFERENCE",
+  ],
+  "Gov-Client-Public-IP": ["QL_008_FRAUD_CLIENT_PUBLIC_IP"],
+  "Gov-Client-Public-IP-Timestamp": [
+    "QL_008_FRAUD_CLIENT_PUBLIC_IP_TIMESTAMP",
+  ],
+  "Gov-Client-Public-Port": ["QL_008_FRAUD_CLIENT_PUBLIC_PORT"],
+  "Gov-Client-Screens": [
+    "QL_008_FRAUD_SCREEN_WIDTH",
+    "QL_008_FRAUD_SCREEN_HEIGHT",
+    "QL_008_FRAUD_SCREEN_SCALING_FACTOR",
+    "QL_008_FRAUD_SCREEN_COLOUR_DEPTH",
+  ],
+  "Gov-Client-Timezone": ["QL_008_FRAUD_TIMEZONE"],
+  "Gov-Client-User-IDs": [
+    "QL_008_FRAUD_CLIENT_USER_ID_KEY",
+    "QL_008_FRAUD_CLIENT_USER_ID_VALUE",
+  ],
+  "Gov-Client-Window-Size": [
+    "QL_008_FRAUD_WINDOW_WIDTH",
+    "QL_008_FRAUD_WINDOW_HEIGHT",
+  ],
+  "Gov-Vendor-Forwarded": [
+    "QL_008_FRAUD_VENDOR_FORWARDED_BY",
+    "QL_008_FRAUD_VENDOR_FORWARDED_FOR",
+  ],
+  "Gov-Vendor-License-IDs": [
+    "QL_008_FRAUD_VENDOR_LICENSE_ID_KEY",
+    "QL_008_FRAUD_VENDOR_LICENSE_ID_VALUE",
+  ],
+  "Gov-Vendor-Public-IP": ["QL_008_FRAUD_VENDOR_PUBLIC_IP"],
+};
+
 export class FraudPreventionHeaderError extends Error {
   readonly missing: readonly FraudPreventionMissingValue[];
 
@@ -46,132 +93,202 @@ export class FraudPreventionHeaderError extends Error {
   }
 }
 
-export function assembleFraudPreventionHeaders(
-  input: FraudPreventionAssemblyInput,
-): FraudPreventionAssemblyResult {
+export function buildWebAppViaServerFraudPreventionHeaders(
+  input: WebAppViaServerFraudPreventionInput,
+): WebAppViaServerFraudPreventionBuildResult {
   const headers: HmrcHeaders = {
     "Gov-Client-Connection-Method": HMRC_CONNECTION_METHOD_WEB_APP_VIA_SERVER,
   };
-  const missing: FraudPreventionMissingValue[] = [];
+  const statuses: FraudPreventionHeaderBuildStatus[] = [
+    {
+      headerName: "Gov-Client-Connection-Method",
+      status: "present",
+      reason: "QuarterLink uses the WEB_APP_VIA_SERVER connection method.",
+      variables: [],
+    },
+  ];
 
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Client-Browser-JS-User-Agent",
-    input.client.browserJsUserAgent,
+    validatePresentText(input.client.browserJsUserAgent),
+    "Browser JavaScript user agent collected from the originating browser action.",
+    "missing",
     "Browser JavaScript user agent must be collected by the client at the user action.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Client-Device-ID",
-    input.client.deviceId,
-    "Device ID must be generated and persisted for the originating device.",
+    validateUuid(input.client.deviceId),
+    "Persistent device ID from the verified HTTP-only signed server cookie.",
+    "missing",
+    "Device ID must come from the verified server-side cookie, not from browser-supplied payload.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Client-Multi-Factor",
-    formatMultiFactor(input.client.multiFactor),
-    "MFA metadata is required unless HMRC has agreed a missing-data approach.",
+    encodeHmrcMultiFactor(input.client.multiFactor),
+    "MFA metadata from the authenticated QuarterLink user action.",
+    "manual-override-required",
+    "QL-BOOTSTRAP has no production auth/MFA event, so MFA metadata needs a local override or HMRC-agreed missing-data handling.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Client-Public-IP",
-    validateIp(input.server.clientPublicIp),
-    "Client public IP must be derived from a trusted edge/server source.",
+    validatePublicIp(input.server.clientPublicIp),
+    "Client public IP from trusted server or edge request metadata.",
+    classifyPublicNetworkMissing(input.localSandbox),
+    "Client public IP must be derived from trusted public request metadata; localhost, private, and documentation ranges are not valid substitutes.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Client-Public-IP-Timestamp",
     validateIpTimestamp(input.server.clientPublicIpTimestamp),
-    "Client public IP timestamp must be captured in UTC when the IP is collected.",
+    "UTC timestamp captured when the client public IP was collected.",
+    "missing",
+    "Client public IP timestamp must be captured in UTC when a public client IP is collected.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Client-Public-Port",
     validateClientPublicPort(input.server.clientPublicPort),
-    "Client public port must be supplied by the trusted deployment layer and must not be a server port.",
+    "Client public source port from trusted server or edge request metadata.",
+    classifyPublicNetworkMissing(input.localSandbox),
+    "Client public source port must come from trusted request metadata and must not be a server port.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Client-Screens",
-    formatScreens(input.client.screens),
-    "Screen details must be collected by the client.",
+    encodeHmrcScreens(input.client.screens),
+    "Screen dimensions, scaling factor, and colour depth collected in the browser.",
+    "missing",
+    "Screen details must be collected by the browser.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Client-Timezone",
     validateTimezone(input.client.timezone),
+    "Browser timezone in HMRC UTC offset format.",
+    "missing",
     "Client timezone must be collected in UTC offset format.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Client-User-IDs",
-    formatKeyValueMap(input.server.clientUserIds),
-    "User identifiers must be derived from authenticated server-side identity.",
+    encodeHmrcKeyValue(input.server.clientUserIds ?? {}),
+    "Server-derived QuarterLink user identifier.",
+    "manual-override-required",
+    "QL-BOOTSTRAP has no production auth user record, so user ID metadata needs a local override or HMRC-agreed missing-data handling.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Client-Window-Size",
-    formatWindowSize(input.client.windowSize),
-    "Window size must be collected by the client.",
+    encodeHmrcWindowSize(input.client.windowSize),
+    "Browser viewport size collected at the originating user action.",
+    "missing",
+    "Window size must be collected by the browser.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Vendor-Forwarded",
-    formatForwarded(input.server.vendorForwarded),
-    "Forwarded hops must be derived from QuarterLink-controlled internet hops.",
+    validateForwarded(input.server.vendorForwarded),
+    "QuarterLink-controlled public request boundary.",
+    classifyPublicNetworkMissing(input.localSandbox),
+    "Vendor forwarded data needs both public vendor and public client IPs; localhost/private hops are not valid substitutes.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Vendor-License-IDs",
-    formatKeyValueMap(input.server.vendorLicenseIds),
-    "Vendor licence IDs are required unless HMRC has agreed a missing-data approach.",
+    encodeHmrcKeyValue(input.server.vendorLicenseIds ?? {}),
+    "QuarterLink licence metadata.",
+    "manual-override-required",
+    "QL-BOOTSTRAP has no licence system, so vendor licence metadata needs a local override or HMRC-agreed missing-data handling.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Vendor-Product-Name",
-    encodeHmrcValue(input.server.vendorProductName),
+    validatePresentText(input.server.vendorProductName) === undefined
+      ? undefined
+      : encodeHmrcComponent(input.server.vendorProductName ?? ""),
+    "QuarterLink product name configured server-side.",
+    "missing",
     "Vendor product name must be configured server-side.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Vendor-Public-IP",
-    validateIp(input.server.vendorPublicIp),
-    "Vendor public IP must be supplied by deployment configuration.",
+    validatePublicIp(input.server.vendorPublicIp),
+    "QuarterLink server, load balancer, or WAF public IP.",
+    classifyPublicNetworkMissing(input.localSandbox),
+    "Vendor public IP must come from deployment metadata; localhost and private interfaces are not valid substitutes.",
   );
-  setRequiredHeader(
+  setHeader(
     headers,
-    missing,
+    statuses,
     "Gov-Vendor-Version",
-    formatKeyValueMap(input.server.vendorVersion),
-    "Vendor version must be supplied by build/deployment metadata.",
+    encodeHmrcKeyValue(input.server.vendorVersion ?? {}),
+    "QuarterLink build or deployment version metadata.",
+    "missing",
+    "Vendor version must be supplied by build or deployment metadata.",
   );
+
+  const missing = statuses
+    .filter((item) => item.status !== "present")
+    .map(toMissingValue);
+  const redactedHeaders = redactHeaders(headers);
 
   if (missing.length > 0) {
     return {
       ok: false,
+      headers,
+      redactedHeaders,
+      statuses,
       missing,
-      redactedHeaders: redactHeaders(headers),
     };
   }
 
   return {
     ok: true,
     headers,
-    redactedHeaders: redactHeaders(headers),
+    redactedHeaders,
+    statuses,
+  };
+}
+
+export function assembleFraudPreventionHeaders(
+  input: FraudPreventionAssemblyInput,
+): FraudPreventionAssemblyResult {
+  const result = buildWebAppViaServerFraudPreventionHeaders({
+    client: input.client,
+    server: input.server,
+  });
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      missing: result.missing,
+      redactedHeaders: result.redactedHeaders,
+    };
+  }
+
+  return {
+    ok: true,
+    headers: result.headers,
+    redactedHeaders: result.redactedHeaders,
   };
 }
 
@@ -188,24 +305,71 @@ export function requireFraudPreventionHeaders(
 }
 
 export function encodeHmrcValue(value: string): string {
-  return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
-    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
+  return encodeHmrcComponent(value);
 }
 
-function setRequiredHeader(
+function setHeader(
   headers: HmrcHeaders,
-  missing: FraudPreventionMissingValue[],
+  statuses: FraudPreventionHeaderBuildStatus[],
   headerName: string,
   value: string | undefined,
-  reason: string,
+  presentReason: string,
+  missingStatus: FraudPreventionHeaderStatus,
+  missingReason: string,
 ): void {
   if (!isNonPlaceholder(value)) {
-    missing.push({ headerName, reason });
+    statuses.push({
+      headerName,
+      status: missingStatus,
+      reason: missingReason,
+      variables: VARIABLE_MAP[headerName] ?? [],
+    });
     return;
   }
 
   headers[headerName] = value;
+  statuses.push({
+    headerName,
+    status: "present",
+    reason: presentReason,
+    variables: VARIABLE_MAP[headerName] ?? [],
+  });
+}
+
+function toMissingValue(
+  status: FraudPreventionHeaderBuildStatus,
+): FraudPreventionMissingValue {
+  return {
+    headerName: status.headerName,
+    reason: status.reason,
+    status: status.status,
+    variables: status.variables,
+  };
+}
+
+function classifyPublicNetworkMissing(
+  localSandbox: boolean | undefined,
+): FraudPreventionHeaderStatus {
+  return localSandbox === true ? "unavailable-on-localhost" : "missing";
+}
+
+function validatePresentText(value: string | undefined): string | undefined {
+  return isNonPlaceholder(value) ? value.trim() : undefined;
+}
+
+function validateUuid(value: string | undefined): string | undefined {
+  const trimmedValue = validatePresentText(value);
+
+  if (
+    trimmedValue === undefined ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      trimmedValue,
+    )
+  ) {
+    return undefined;
+  }
+
+  return trimmedValue.toLowerCase();
 }
 
 function isNonPlaceholder(value: string | undefined): value is string {
@@ -222,187 +386,143 @@ function isNonPlaceholder(value: string | undefined): value is string {
   );
 }
 
-function validateIp(value: string): string | undefined {
-  const trimmedValue = value.trim();
+function validatePublicIp(value: string | undefined): string | undefined {
+  const trimmedValue = validatePresentText(value);
 
-  if (!isNonPlaceholder(trimmedValue) || isIP(trimmedValue) === 0) {
+  if (trimmedValue === undefined || !isPublicIp(trimmedValue)) {
     return undefined;
   }
 
   return trimmedValue;
 }
 
-function validateIpTimestamp(value: string): string | undefined {
-  const trimmedValue = value.trim();
+function validateIpTimestamp(value: string | undefined): string | undefined {
+  const trimmedValue = validatePresentText(value);
   const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
-  if (!timestampPattern.test(trimmedValue)) {
+  if (trimmedValue === undefined || !timestampPattern.test(trimmedValue)) {
     return undefined;
   }
 
   return trimmedValue;
 }
 
-function validateClientPublicPort(value: number): string | undefined {
-  if (!Number.isInteger(value) || value < 1 || value > 65535) {
-    return undefined;
-  }
-
-  if (value === 80 || value === 443) {
+function validateClientPublicPort(value: number | undefined): string | undefined {
+  if (
+    value === undefined ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > 65535 ||
+    value === 80 ||
+    value === 443
+  ) {
     return undefined;
   }
 
   return String(value);
 }
 
-function validateTimezone(value: string): string | undefined {
-  const trimmedValue = value.trim();
+function validateTimezone(value: string | undefined): string | undefined {
+  const trimmedValue = validatePresentText(value);
 
-  if (!/^UTC[+-]\d{2}:\d{2}$/.test(trimmedValue)) {
+  if (trimmedValue === undefined || !/^UTC[+-]\d{2}:\d{2}$/.test(trimmedValue)) {
     return undefined;
   }
 
   return trimmedValue;
 }
 
-function formatScreens(
-  screens: readonly FraudPreventionScreen[] | undefined,
-): string | undefined {
-  if (screens === undefined || screens.length === 0) {
-    return undefined;
-  }
-
-  const encodedScreens = screens.map((screen) => {
-    if (
-      !isPositiveWholeNumber(screen.width) ||
-      !isPositiveWholeNumber(screen.height) ||
-      !Number.isFinite(screen.scalingFactor) ||
-      screen.scalingFactor <= 0 ||
-      !isPositiveWholeNumber(screen.colourDepth)
-    ) {
-      return undefined;
-    }
-
-    return formatKeyValueMap({
-      width: String(screen.width),
-      height: String(screen.height),
-      "scaling-factor": String(screen.scalingFactor),
-      "colour-depth": String(screen.colourDepth),
-    });
-  });
-
-  if (encodedScreens.some((screen) => screen === undefined)) {
-    return undefined;
-  }
-
-  return encodedScreens.join(",");
-}
-
-function formatWindowSize(
-  windowSize: FraudPreventionWindowSize | undefined,
+function validateForwarded(
+  forwarded: WebAppViaServerFraudPreventionInput["server"]["vendorForwarded"],
 ): string | undefined {
   if (
-    windowSize === undefined ||
-    !isPositiveWholeNumber(windowSize.width) ||
-    !isPositiveWholeNumber(windowSize.height)
+    forwarded === undefined ||
+    forwarded.length === 0 ||
+    forwarded.some(
+      (hop) => validatePublicIp(hop.by) === undefined || validatePublicIp(hop.for) === undefined,
+    )
   ) {
     return undefined;
   }
 
-  return formatKeyValueMap({
-    width: String(windowSize.width),
-    height: String(windowSize.height),
-  });
+  return encodeHmrcForwarded(forwarded);
 }
 
-function formatMultiFactor(
-  factors: readonly FraudPreventionMultiFactor[] | undefined,
-): string | undefined {
-  if (factors === undefined || factors.length === 0) {
-    return undefined;
+function isPublicIp(value: string): boolean {
+  const version = isIP(value);
+
+  if (version === 4) {
+    return isPublicIpv4(value);
   }
 
-  const encodedFactors = factors.map((factor) => {
-    const timestampIsValid =
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{3})?)?Z$/.test(
-        factor.timestamp,
-      );
-
-    if (
-      !isNonPlaceholder(factor.type) ||
-      !timestampIsValid ||
-      !isNonPlaceholder(factor.uniqueReference)
-    ) {
-      return undefined;
-    }
-
-    return formatKeyValueMap({
-      type: factor.type,
-      timestamp: factor.timestamp,
-      "unique-reference": factor.uniqueReference,
-    });
-  });
-
-  if (encodedFactors.some((factor) => factor === undefined)) {
-    return undefined;
+  if (version === 6) {
+    return isPublicIpv6(value);
   }
 
-  return encodedFactors.join(",");
+  return false;
 }
 
-function formatForwarded(
-  forwarded: readonly FraudPreventionForwardedHop[] | undefined,
-): string | undefined {
-  if (forwarded === undefined || forwarded.length === 0) {
-    return undefined;
+function isPublicIpv4(value: string): boolean {
+  const parts = value.split(".").map(Number);
+  const [first, second, third] = parts;
+
+  if (parts.length !== 4 || parts.some((part) => part < 0 || part > 255)) {
+    return false;
   }
 
-  const encodedHops = forwarded.map((hop) => {
-    if (validateIp(hop.by) === undefined || validateIp(hop.for) === undefined) {
-      return undefined;
-    }
-
-    return formatKeyValueMap({
-      by: hop.by,
-      for: hop.for,
-    });
-  });
-
-  if (encodedHops.some((hop) => hop === undefined)) {
-    return undefined;
+  if (first === 0 || first === 10 || first === 127 || first >= 224) {
+    return false;
   }
 
-  return encodedHops.join(",");
+  if (first === 100 && second >= 64 && second <= 127) {
+    return false;
+  }
+
+  if (first === 169 && second === 254) {
+    return false;
+  }
+
+  if (first === 172 && second >= 16 && second <= 31) {
+    return false;
+  }
+
+  if (first === 192 && second === 168) {
+    return false;
+  }
+
+  if (first === 192 && (second === 0 || second === 2 || second === 88)) {
+    return false;
+  }
+
+  if (first === 198 && (second === 18 || second === 19)) {
+    return false;
+  }
+
+  if (first === 198 && second === 51 && third === 100) {
+    return false;
+  }
+
+  if (first === 203 && second === 0 && third === 113) {
+    return false;
+  }
+
+  return true;
 }
 
-function formatKeyValueMap(
-  values: Readonly<Record<string, string>> | undefined,
-): string | undefined {
-  if (values === undefined) {
-    return undefined;
+function isPublicIpv6(value: string): boolean {
+  const normalised = value.toLowerCase();
+  const firstHextet = Number.parseInt(normalised.split(":")[0] || "0", 16);
+
+  if (!Number.isFinite(firstHextet)) {
+    return false;
   }
 
-  const entries = Object.entries(values);
-
-  if (entries.length === 0) {
-    return undefined;
-  }
-
-  const encodedEntries = entries.map(([key, value]) => {
-    if (!isNonPlaceholder(key) || !isNonPlaceholder(value)) {
-      return undefined;
-    }
-
-    return `${encodeHmrcValue(key)}=${encodeHmrcValue(value)}`;
-  });
-
-  if (encodedEntries.some((entry) => entry === undefined)) {
-    return undefined;
-  }
-
-  return encodedEntries.join("&");
-}
-
-function isPositiveWholeNumber(value: number): boolean {
-  return Number.isInteger(value) && value > 0;
+  return (
+    normalised !== "::" &&
+    normalised !== "::1" &&
+    (firstHextet & 0xfe00) !== 0xfc00 &&
+    (firstHextet & 0xffc0) !== 0xfe80 &&
+    (firstHextet & 0xff00) !== 0xff00 &&
+    !normalised.startsWith("2001:db8")
+  );
 }

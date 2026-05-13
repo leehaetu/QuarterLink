@@ -168,15 +168,15 @@ describe("QL-008 fraud-prevention input collector", () => {
     );
     assert.equal(
       readVariable(result, "QL_008_FRAUD_CLIENT_PUBLIC_IP").status,
-      "missing",
+      "unavailable-on-localhost",
     );
     assert.equal(
       readVariable(result, "QL_008_FRAUD_CLIENT_PUBLIC_PORT").status,
-      "missing",
+      "unavailable-on-localhost",
     );
     assert.equal(
       readVariable(result, "QL_008_FRAUD_VENDOR_PUBLIC_IP").status,
-      "missing",
+      "unavailable-on-localhost",
     );
     assert(result.envSnippet.includes("QL_008_FRAUD_BROWSER_JS_USER_AGENT="));
     assert(result.envSnippet.includes("# TODO QL_008_FRAUD_CLIENT_PUBLIC_IP:"));
@@ -231,11 +231,11 @@ describe("QL-008 fraud-prevention input collector", () => {
 
     assert.equal(
       readVariable(result, "QL_008_FRAUD_CLIENT_PUBLIC_IP").status,
-      "missing",
+      "unavailable-on-localhost",
     );
     assert.equal(
       readVariable(result, "QL_008_FRAUD_VENDOR_PUBLIC_IP").status,
-      "missing",
+      "unavailable-on-localhost",
     );
   });
 
