@@ -4,7 +4,6 @@ import {
   buildFraudPreventionInputFromEnv,
   HMRC_SANDBOX_API_BASE_URL,
   HMRC_SANDBOX_AUTH_BASE_URL,
-  REDACTED_VALUE,
   runQl008SandboxDiscovery,
 } from "../../../src/server/hmrc";
 
@@ -19,6 +18,8 @@ const validBaseEnv = {
   HMRC_SANDBOX_SCOPES: "read:self-assessment write:self-assessment",
   HMRC_SANDBOX_ACCESS_TOKEN: "fresh-user-token",
   HMRC_SANDBOX_TEST_NINO: "AA000000A",
+  HMRC_SANDBOX_PERIOD_START_DATE: "2026-04-06",
+  HMRC_SANDBOX_PERIOD_END_DATE: "2026-07-05",
 };
 
 const validFraudEnv = {
@@ -94,7 +95,7 @@ describe("QL-008 sandbox discovery", () => {
     );
   });
 
-  test("gets an application-restricted token before FPH and stops before read-only discovery", async () => {
+  test("runs FPH, Business Details, and Obligations read-only when guarded discovery is allowed", async () => {
     const requestedUrls: string[] = [];
     const result = await runQl008SandboxDiscovery({
       env: {
@@ -124,16 +125,17 @@ describe("QL-008 sandbox discovery", () => {
           });
         }
 
-        const authorization =
-          init?.headers instanceof Headers
-            ? init.headers.get("Authorization")
-            : (init?.headers as Record<string, string>).Authorization;
-        assert.equal(
-          authorization,
-          "Bearer fresh-application-token",
-        );
-
         if (requestedUrls.length === 2) {
+          const authorization =
+            init?.headers instanceof Headers
+              ? init.headers.get("Authorization")
+              : (init?.headers as Record<string, string>).Authorization;
+          assert.equal(authorization, "Bearer fresh-application-token");
+          assert.equal(init?.method, "GET");
+          assert.equal(
+            (init?.headers as Record<string, string>).Accept,
+            "application/vnd.hmrc.1.0+json",
+          );
           return jsonResponse({
             specVersion: "3.1",
             code: "VALID_HEADERS",
@@ -141,23 +143,96 @@ describe("QL-008 sandbox discovery", () => {
           });
         }
 
-        assert.fail("Discovery must not call Business Details or Obligations in this step.");
+        if (requestedUrls.length === 3) {
+          assert.equal(init?.method, "GET");
+          assert.equal(
+            String(input),
+            `${HMRC_SANDBOX_API_BASE_URL}/individuals/business/details/AA000000A/list`,
+          );
+          assert.equal(
+            (init?.headers as Record<string, string>).Accept,
+            "application/vnd.hmrc.2.0+json",
+          );
+          assert.equal(
+            (init?.headers as Record<string, string>).Authorization,
+            "Bearer fresh-user-token",
+          );
+          return jsonResponse({
+            listOfBusinesses: [
+              {
+                typeOfBusiness: "self-employment",
+                businessId: "XAIS12345678901",
+              },
+            ],
+          });
+        }
+
+        if (requestedUrls.length === 4) {
+          assert.equal(init?.method, "GET");
+          const url = new URL(String(input));
+          assert.equal(
+            `${url.origin}${url.pathname}`,
+            `${HMRC_SANDBOX_API_BASE_URL}/obligations/details/AA000000A/income-and-expenditure`,
+          );
+          assert.equal(url.searchParams.get("typeOfBusiness"), "self-employment");
+          assert.equal(url.searchParams.get("businessId"), "XAIS12345678901");
+          assert.equal(url.searchParams.get("fromDate"), "2026-04-06");
+          assert.equal(url.searchParams.get("toDate"), "2026-07-05");
+          assert.equal(
+            (init?.headers as Record<string, string>).Accept,
+            "application/vnd.hmrc.3.0+json",
+          );
+          assert.equal(
+            (init?.headers as Record<string, string>).Authorization,
+            "Bearer fresh-user-token",
+          );
+          return jsonResponse({
+            obligations: [
+              {
+                typeOfBusiness: "self-employment",
+                businessId: "XAIS12345678901",
+                obligationDetails: [
+                  {
+                    periodStartDate: "2026-04-06",
+                    periodEndDate: "2026-07-05",
+                    dueDate: "2026-08-05",
+                    status: "open",
+                  },
+                ],
+              },
+            ],
+          });
+        }
+
+        assert.fail("Discovery must not call any additional HMRC endpoints.");
       },
     });
 
     assert.equal(result.ok, true);
     assert.equal(result.hmrcNetworkCallsAttempted, true);
     assert.equal(result.hmrcSubmissionCallsAttempted, false);
-    assert.equal(requestedUrls.length, 2);
+    assert.equal(requestedUrls.length, 4);
     assert(requestedUrls[1].endsWith("/test/fraud-prevention-headers/validate"));
-    assert.equal(result.businessDetails, undefined);
-    assert.equal(result.obligations, undefined);
-    assert(
-      result.items.some(
-        (item) =>
-          item.check === "Business Details read-only discovery" &&
-          item.status === "skip",
-      ),
+    assert.deepEqual(result.businessDetails?.selfEmploymentBusinessIds, [
+      "XAIS12345678901",
+    ]);
+    assert.equal(result.obligations?.obligationCount, 1);
+    assert.equal(result.obligations?.openObligationCount, 1);
+    assert.deepEqual(
+      result.obligations?.discoveredPeriods.map((period) => ({
+        taxYear: period.taxYear,
+        periodStartDate: period.periodStartDate,
+        periodEndDate: period.periodEndDate,
+        status: period.status,
+      })),
+      [
+        {
+          taxYear: "2026-27",
+          periodStartDate: "2026-04-06",
+          periodEndDate: "2026-07-05",
+          status: "open",
+        },
+      ],
     );
     assert(!JSON.stringify(result).includes("fresh-application-token"));
     assert(!JSON.stringify(result).includes("fresh-user-token"));
@@ -234,10 +309,9 @@ describe("QL-008 sandbox discovery", () => {
     });
 
     assert.equal(
-      result.testFraudPreventionHeaders?.safeMetadata?.errors instanceof Array,
-      true,
+      result.testFraudPreventionHeaders?.safeMetadata?.code,
+      "INVALID_HEADERS",
     );
-    assert(JSON.stringify(result).includes(REDACTED_VALUE));
     assert(!JSON.stringify(result).includes("token-that-must-not-leak"));
     assert(!JSON.stringify(result).includes("application-token-that-must-not-leak"));
   });

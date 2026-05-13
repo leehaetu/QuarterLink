@@ -87,7 +87,15 @@ export interface Ql008ObligationsDiscoveryResult {
   readonly passed: boolean;
   readonly obligationCount: number;
   readonly openObligationCount: number;
+  readonly discoveredPeriods: readonly Ql008DiscoveredObligationPeriod[];
   readonly safeMetadata?: Readonly<Record<string, unknown>>;
+}
+
+export interface Ql008DiscoveredObligationPeriod {
+  readonly taxYear?: string;
+  readonly periodStartDate: string;
+  readonly periodEndDate: string;
+  readonly status?: string;
 }
 
 interface FraudPreventionInputParseResult {
@@ -202,7 +210,14 @@ const APPLICATION_RESTRICTED_SCOPE_ENV = "HMRC_SANDBOX_FPH_SCOPES";
 const USER_RESTRICTED_TOKEN_ENV = "HMRC_SANDBOX_ACCESS_TOKEN";
 const ALLOW_CALLS_ENV = "QL_008_DISCOVERY_ALLOW_HMRC_CALLS";
 const TEST_FPH_ACCEPT = "application/vnd.hmrc.1.0+json";
+const BUSINESS_DETAILS_ACCEPT = "application/vnd.hmrc.2.0+json";
+const OBLIGATIONS_ACCEPT = "application/vnd.hmrc.3.0+json";
+const BUSINESS_DETAILS_LIST_PATH = "/individuals/business/details/{nino}/list";
+const OBLIGATIONS_INCOME_EXPENDITURE_PATH =
+  "/obligations/details/{nino}/income-and-expenditure";
 const DEFAULT_HMRC_DISCOVERY_TIMEOUT_MS = 10_000;
+const BUSINESS_ID_PATTERN = /^X[A-Za-z0-9]IS[0-9]{11}$/;
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function runQl008SandboxDiscovery(
   input: Ql008SandboxDiscoveryInput = {},
@@ -264,6 +279,8 @@ export async function runQl008SandboxDiscovery(
 
   let testFraudPreventionHeaders: Ql008TestFraudPreventionHeadersResult | undefined;
   let fphApplicationToken: Ql008FphApplicationTokenResult | undefined;
+  let businessDetails: Ql008BusinessDetailsDiscoveryResult | undefined;
+  let obligations: Ql008ObligationsDiscoveryResult | undefined;
 
   const blockersBeforeNetwork = items
     .filter((item) => item.status === "block")
@@ -327,24 +344,88 @@ export async function runQl008SandboxDiscovery(
       status: fphResult.passed ? "pass" : "block",
       detail: fphResult.passed
         ? "HMRC sandbox accepted the WEB_APP_VIA_SERVER header set. Raw header values not displayed."
-        : "HMRC sandbox did not return VALID_HEADERS. Business Details discovery remains blocked.",
+        : "HMRC sandbox did not return VALID_HEADERS. Business Details discovery remains blocked; status/code/summary/correlation ID are recorded only in redacted metadata.",
     });
 
     if (fphResult.passed) {
-      items.push(
-        {
+      const readOnlyContext = getReadOnlyDiscoveryContext(env);
+
+      if (!readOnlyContext.ok) {
+        items.push(
+          {
+            check: "Business Details read-only discovery",
+            status: "block",
+            detail: `Missing required read-only discovery environment variables: ${readOnlyContext.missing.join(", ")}.`,
+          },
+          {
+            check: "Obligations read-only discovery",
+            status: "skip",
+            detail:
+              "Skipped because Business Details read-only discovery was blocked before the HMRC call.",
+          },
+        );
+      } else {
+        businessDetails = await discoverBusinessDetails({
+          apiBaseUrl: configResult.apiBaseUrl,
+          userRestrictedToken: readOnlyContext.accessToken,
+          nino: readOnlyContext.nino,
+          fraudPreventionHeaders: fraudInputResult.headerBuild.headers,
+          fetchImpl: input.fetchImpl ?? fetch,
+          timeoutMs: httpTimeoutMs,
+        });
+        hmrcNetworkCallsAttempted = true;
+
+        items.push({
           check: "Business Details read-only discovery",
-          status: "skip",
-          detail:
-            "Skipped in this QL-008 fraud-header builder consolidation step. No Business Details call was made.",
-        },
-        {
-          check: "Obligations read-only discovery",
-          status: "skip",
-          detail:
-            "Skipped in this QL-008 fraud-header builder consolidation step. No Obligations call was made.",
-        },
-      );
+          status: businessDetails.passed ? "pass" : "block",
+          detail: businessDetails.passed
+            ? `${businessDetails.selfEmploymentBusinessIds.length} self-employment businessId value(s) discovered. Values not displayed in this item.`
+            : "HMRC sandbox Business Details read-only discovery did not return a successful response.",
+        });
+
+        if (!businessDetails.passed) {
+          items.push({
+            check: "Obligations read-only discovery",
+            status: "skip",
+            detail:
+              "Skipped because Business Details read-only discovery did not pass.",
+          });
+        } else {
+          const obligationsContext = getObligationsDiscoveryContext(
+            env,
+            businessDetails.selfEmploymentBusinessIds,
+          );
+
+          if (!obligationsContext.ok) {
+            items.push({
+              check: "Obligations read-only discovery",
+              status: "block",
+              detail: obligationsContext.detail,
+            });
+          } else {
+            obligations = await discoverObligations({
+              apiBaseUrl: configResult.apiBaseUrl,
+              userRestrictedToken: readOnlyContext.accessToken,
+              nino: readOnlyContext.nino,
+              fraudPreventionHeaders: fraudInputResult.headerBuild.headers,
+              businessId: obligationsContext.businessId,
+              periodStartDate: obligationsContext.periodStartDate,
+              periodEndDate: obligationsContext.periodEndDate,
+              fetchImpl: input.fetchImpl ?? fetch,
+              timeoutMs: httpTimeoutMs,
+            });
+            hmrcNetworkCallsAttempted = true;
+
+            items.push({
+              check: "Obligations read-only discovery",
+              status: obligations.passed ? "pass" : "block",
+              detail: obligations.passed
+                ? `${obligations.obligationCount} obligation period(s) discovered; ${obligations.openObligationCount} open. Raw response values not displayed in this item.`
+                : "HMRC sandbox Obligations read-only discovery did not return a successful response.",
+            });
+          }
+        }
+      }
     }
   }
 
@@ -367,6 +448,8 @@ export async function runQl008SandboxDiscovery(
     ...(testFraudPreventionHeaders === undefined
       ? {}
       : { testFraudPreventionHeaders }),
+    ...(businessDetails === undefined ? {} : { businessDetails }),
+    ...(obligations === undefined ? {} : { obligations }),
   };
 }
 
@@ -577,32 +660,203 @@ async function validateFraudPreventionHeaders(input: {
     "/test/fraud-prevention-headers/validate",
     input.apiBaseUrl,
   );
-  const response = await fetchWithTimeout(input.fetchImpl, url, {
+  const safeBaseMetadata = {
+    endpoint: "Test Fraud Prevention Headers",
     method: "GET",
-    headers: {
-      Accept: TEST_FPH_ACCEPT,
-      Authorization: `Bearer ${input.applicationRestrictedToken}`,
-      ...input.fraudPreventionHeaders,
-    },
-  }, input.timeoutMs);
-  const payload = await readJson(response);
-  const code = getString(payload, "code");
-
-  return {
-    attempted: true,
-    passed: response.ok && code === "VALID_HEADERS",
-    safeMetadata: {
-      endpoint: "Test Fraud Prevention Headers",
-      method: "GET",
-      path: "/test/fraud-prevention-headers/validate",
-      status: response.status,
-      ok: response.ok,
-      code: code ?? "not returned",
-      specVersion: getString(payload, "specVersion") ?? "not returned",
-      errors: redactEvidenceValue(payload.errors ?? []),
-      warnings: redactEvidenceValue(payload.warnings ?? []),
-    },
+    path: "/test/fraud-prevention-headers/validate",
   };
+
+  try {
+    const response = await fetchWithTimeout(input.fetchImpl, url, {
+      method: "GET",
+      headers: {
+        Accept: TEST_FPH_ACCEPT,
+        Authorization: `Bearer ${input.applicationRestrictedToken}`,
+        ...input.fraudPreventionHeaders,
+      },
+    }, input.timeoutMs);
+    const payload = await readJson(response);
+    const code = getString(payload, "code");
+
+    return {
+      attempted: true,
+      passed: response.ok && code === "VALID_HEADERS",
+      safeMetadata: {
+        ...safeBaseMetadata,
+        status: response.status,
+        ok: response.ok,
+        code: code ?? "not returned",
+        summary: getSafeResponseSummary(response, payload),
+        correlationId: getCorrelationId(response),
+      },
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      passed: false,
+      safeMetadata: {
+        ...safeBaseMetadata,
+        status: "not returned",
+        ok: false,
+        code: "REQUEST_FAILED",
+        summary: error instanceof Error ? error.name : "UnknownError",
+        correlationId: "not returned",
+      },
+    };
+  }
+}
+
+async function discoverBusinessDetails(input: {
+  readonly apiBaseUrl: string;
+  readonly userRestrictedToken: string;
+  readonly nino: string;
+  readonly fraudPreventionHeaders: HmrcHeaders;
+  readonly fetchImpl: FetchLike;
+  readonly timeoutMs: number;
+}): Promise<Ql008BusinessDetailsDiscoveryResult> {
+  const url = new URL(
+    BUSINESS_DETAILS_LIST_PATH.replace("{nino}", encodeURIComponent(input.nino)),
+    input.apiBaseUrl,
+  );
+  const safeBaseMetadata = {
+    endpoint: "Business Details list all businesses",
+    method: "GET",
+    path: BUSINESS_DETAILS_LIST_PATH,
+  };
+
+  try {
+    const response = await fetchWithTimeout(input.fetchImpl, url, {
+      method: "GET",
+      headers: {
+        Accept: BUSINESS_DETAILS_ACCEPT,
+        Authorization: `Bearer ${input.userRestrictedToken}`,
+        ...input.fraudPreventionHeaders,
+      },
+    }, input.timeoutMs);
+    const payload = await readJson(response);
+    const selfEmploymentBusinessIds = response.ok
+      ? extractSelfEmploymentBusinessIds(payload)
+      : [];
+
+    return {
+      attempted: true,
+      passed: response.ok,
+      selfEmploymentBusinessIds,
+      safeMetadata: {
+        ...safeBaseMetadata,
+        status: response.status,
+        ok: response.ok,
+        code: getString(payload, "code") ?? "not returned",
+        summary: getSafeResponseSummary(response, payload),
+        correlationId: getCorrelationId(response),
+        businessCount: countBusinessRecords(payload),
+        selfEmploymentBusinessIdCount: selfEmploymentBusinessIds.length,
+      },
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      passed: false,
+      selfEmploymentBusinessIds: [],
+      safeMetadata: {
+        ...safeBaseMetadata,
+        status: "not returned",
+        ok: false,
+        code: "REQUEST_FAILED",
+        summary: error instanceof Error ? error.name : "UnknownError",
+        correlationId: "not returned",
+      },
+    };
+  }
+}
+
+async function discoverObligations(input: {
+  readonly apiBaseUrl: string;
+  readonly userRestrictedToken: string;
+  readonly nino: string;
+  readonly fraudPreventionHeaders: HmrcHeaders;
+  readonly businessId?: string;
+  readonly periodStartDate?: string;
+  readonly periodEndDate?: string;
+  readonly fetchImpl: FetchLike;
+  readonly timeoutMs: number;
+}): Promise<Ql008ObligationsDiscoveryResult> {
+  const url = new URL(
+    OBLIGATIONS_INCOME_EXPENDITURE_PATH.replace(
+      "{nino}",
+      encodeURIComponent(input.nino),
+    ),
+    input.apiBaseUrl,
+  );
+
+  if (input.businessId !== undefined) {
+    url.searchParams.set("typeOfBusiness", "self-employment");
+    url.searchParams.set("businessId", input.businessId);
+  }
+
+  if (input.periodStartDate !== undefined && input.periodEndDate !== undefined) {
+    url.searchParams.set("fromDate", input.periodStartDate);
+    url.searchParams.set("toDate", input.periodEndDate);
+  }
+
+  const safeBaseMetadata = {
+    endpoint: "Obligations income and expenditure",
+    method: "GET",
+    path: OBLIGATIONS_INCOME_EXPENDITURE_PATH,
+  };
+
+  try {
+    const response = await fetchWithTimeout(input.fetchImpl, url, {
+      method: "GET",
+      headers: {
+        Accept: OBLIGATIONS_ACCEPT,
+        Authorization: `Bearer ${input.userRestrictedToken}`,
+        ...input.fraudPreventionHeaders,
+      },
+    }, input.timeoutMs);
+    const payload = await readJson(response);
+    const discoveredPeriods = response.ok ? extractObligationPeriods(payload) : [];
+    const openObligationCount = discoveredPeriods.filter(
+      (period) => period.status === "open",
+    ).length;
+
+    return {
+      attempted: true,
+      passed: response.ok,
+      obligationCount: discoveredPeriods.length,
+      openObligationCount,
+      discoveredPeriods,
+      safeMetadata: {
+        ...safeBaseMetadata,
+        status: response.status,
+        ok: response.ok,
+        code: getString(payload, "code") ?? "not returned",
+        summary: getSafeResponseSummary(response, payload),
+        correlationId: getCorrelationId(response),
+        usedSelfEmploymentBusinessFilter: input.businessId !== undefined,
+        usedDateRange:
+          input.periodStartDate !== undefined && input.periodEndDate !== undefined,
+        obligationCount: discoveredPeriods.length,
+        openObligationCount,
+      },
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      passed: false,
+      obligationCount: 0,
+      openObligationCount: 0,
+      discoveredPeriods: [],
+      safeMetadata: {
+        ...safeBaseMetadata,
+        status: "not returned",
+        ok: false,
+        code: "REQUEST_FAILED",
+        summary: error instanceof Error ? error.name : "UnknownError",
+        correlationId: "not returned",
+      },
+    };
+  }
 }
 
 async function resolveFphApplicationToken(input: {
@@ -749,6 +1003,202 @@ function recordTokenSource(
     },
   );
 }
+
+function getReadOnlyDiscoveryContext(
+  env: EnvironmentSource,
+):
+  | {
+      readonly ok: true;
+      readonly accessToken: string;
+      readonly nino: string;
+    }
+  | {
+      readonly ok: false;
+      readonly missing: readonly string[];
+    } {
+  const accessToken = optionalEnv(env, USER_RESTRICTED_TOKEN_ENV);
+  const nino = optionalEnv(env, "HMRC_SANDBOX_TEST_NINO");
+  const missing = [
+    accessToken === undefined ? USER_RESTRICTED_TOKEN_ENV : undefined,
+    nino === undefined ? "HMRC_SANDBOX_TEST_NINO" : undefined,
+  ].filter((key): key is string => key !== undefined);
+
+  if (accessToken === undefined || nino === undefined) {
+    return { ok: false, missing };
+  }
+
+  return { ok: true, accessToken, nino };
+}
+
+function getObligationsDiscoveryContext(
+  env: EnvironmentSource,
+  selfEmploymentBusinessIds: readonly string[],
+):
+  | {
+      readonly ok: true;
+      readonly businessId?: string;
+      readonly periodStartDate?: string;
+      readonly periodEndDate?: string;
+    }
+  | {
+      readonly ok: false;
+      readonly detail: string;
+    } {
+  const periodStartDate = optionalEnv(env, "HMRC_SANDBOX_PERIOD_START_DATE");
+  const periodEndDate = optionalEnv(env, "HMRC_SANDBOX_PERIOD_END_DATE");
+  const missingPair =
+    (periodStartDate === undefined && periodEndDate !== undefined) ||
+    (periodStartDate !== undefined && periodEndDate === undefined);
+
+  if (missingPair) {
+    const missing =
+      periodStartDate === undefined
+        ? "HMRC_SANDBOX_PERIOD_START_DATE"
+        : "HMRC_SANDBOX_PERIOD_END_DATE";
+
+    return {
+      ok: false,
+      detail: `${missing} is required because the matching period date is present.`,
+    };
+  }
+
+  if (
+    (periodStartDate !== undefined && !ISO_DATE_PATTERN.test(periodStartDate)) ||
+    (periodEndDate !== undefined && !ISO_DATE_PATTERN.test(periodEndDate))
+  ) {
+    return {
+      ok: false,
+      detail:
+        "HMRC_SANDBOX_PERIOD_START_DATE and HMRC_SANDBOX_PERIOD_END_DATE must use YYYY-MM-DD when supplied.",
+    };
+  }
+
+  const businessId = selfEmploymentBusinessIds[0];
+
+  return {
+    ok: true,
+    ...(businessId === undefined ? {} : { businessId }),
+    ...(periodStartDate === undefined ? {} : { periodStartDate }),
+    ...(periodEndDate === undefined ? {} : { periodEndDate }),
+  };
+}
+
+function extractSelfEmploymentBusinessIds(
+  payload: Readonly<Record<string, unknown>>,
+): readonly string[] {
+  const businesses = getRecordArray(payload, "listOfBusinesses");
+
+  return businesses
+    .filter((business) => business.typeOfBusiness === "self-employment")
+    .map((business) => business.businessId)
+    .filter(
+      (businessId): businessId is string =>
+        typeof businessId === "string" && BUSINESS_ID_PATTERN.test(businessId),
+    );
+}
+
+function countBusinessRecords(payload: Readonly<Record<string, unknown>>): number {
+  return getRecordArray(payload, "listOfBusinesses").length;
+}
+
+function extractObligationPeriods(
+  payload: Readonly<Record<string, unknown>>,
+): readonly Ql008DiscoveredObligationPeriod[] {
+  const seen = new Set<string>();
+  const periods: Ql008DiscoveredObligationPeriod[] = [];
+
+  for (const obligation of getRecordArray(payload, "obligations")) {
+    for (const detail of getRecordArray(obligation, "obligationDetails")) {
+      const periodStartDate = getString(detail, "periodStartDate");
+      const periodEndDate = getString(detail, "periodEndDate");
+
+      if (
+        periodStartDate === undefined ||
+        periodEndDate === undefined ||
+        !ISO_DATE_PATTERN.test(periodStartDate) ||
+        !ISO_DATE_PATTERN.test(periodEndDate)
+      ) {
+        continue;
+      }
+
+      const status = getString(detail, "status");
+      const key = `${periodStartDate}:${periodEndDate}:${status ?? ""}`;
+
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+
+      periods.push({
+        periodStartDate,
+        periodEndDate,
+        taxYear: inferTaxYear(periodEndDate),
+        ...(status === undefined ? {} : { status }),
+      });
+    }
+  }
+
+  return periods;
+}
+
+function getRecordArray(
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+): readonly Readonly<Record<string, unknown>>[] {
+  const value = record[key];
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is Readonly<Record<string, unknown>> =>
+      item !== null && typeof item === "object" && !Array.isArray(item),
+  );
+}
+
+function inferTaxYear(periodEndDate: string): string | undefined {
+  const [yearValue, monthValue, dayValue] = periodEndDate.split("-").map(Number);
+
+  if (
+    !Number.isInteger(yearValue) ||
+    !Number.isInteger(monthValue) ||
+    !Number.isInteger(dayValue)
+  ) {
+    return undefined;
+  }
+
+  const endsAfterTaxYearBoundary =
+    monthValue > 4 || (monthValue === 4 && dayValue > 5);
+  const startYear = endsAfterTaxYearBoundary ? yearValue : yearValue - 1;
+  const endYear = startYear + 1;
+
+  return `${startYear}-${String(endYear).slice(-2)}`;
+}
+
+function getSafeResponseSummary(
+  response: Response,
+  payload: Readonly<Record<string, unknown>>,
+): string {
+  const message = getString(payload, "message");
+
+  if (message !== undefined) {
+    const redactedMessage = redactEvidenceValue(message);
+    return typeof redactedMessage === "string" ? redactedMessage : REDACTED_SUMMARY;
+  }
+
+  if (response.ok) {
+    return "success";
+  }
+
+  return response.statusText.trim() || "not returned";
+}
+
+function getCorrelationId(response: Response): string {
+  return response.headers.get("X-CorrelationId") ?? "not returned";
+}
+
+const REDACTED_SUMMARY = "redacted";
 
 function toMissingFraudInput(
   missing: FraudPreventionMissingValue,
