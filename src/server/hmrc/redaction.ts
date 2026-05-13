@@ -11,9 +11,13 @@ const SENSITIVE_HEADER_NAMES = new Set([
 
 const SENSITIVE_KEY_PARTS = [
   "access_token",
+  "auth_code",
+  "authorisation_code",
+  "authorization_code",
   "authorization",
   "bearer",
   "client_secret",
+  "code_challenge",
   "code_verifier",
   "device_id",
   "hmrc_sandbox_client_secret",

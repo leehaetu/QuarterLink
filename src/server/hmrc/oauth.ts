@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { HmrcSandboxClient } from "./client";
 import { loadHmrcSandboxConfig } from "./config";
 import type { HmrcSandboxConfig } from "./types";
@@ -11,6 +12,8 @@ export const HMRC_SANDBOX_OAUTH_STATE_KEY = "HMRC_SANDBOX_OAUTH_STATE";
 export const HMRC_SANDBOX_TEST_USER_TYPE_KEY = "HMRC_SANDBOX_TEST_USER_TYPE";
 export const HMRC_SANDBOX_OAUTH_SHOW_TOKENS_KEY =
   "HMRC_SANDBOX_OAUTH_SHOW_TOKENS";
+export const HMRC_SANDBOX_OAUTH_STATE_TTL_MS = 5 * 60 * 1000;
+export const HMRC_SANDBOX_OAUTH_CLOCK_DRIFT_BUFFER_SECONDS = 60;
 export const HMRC_SANDBOX_REQUIRED_REDIRECT_URI =
   "http://localhost:3000/api/hmrc/oauth/callback";
 export const HMRC_SANDBOX_DEMO_SESSION_COOKIE =
@@ -29,13 +32,23 @@ const REQUIRED_LOCAL_OAUTH_ENV_KEYS = [
   "HMRC_SANDBOX_REDIRECT_URI",
   "HMRC_SANDBOX_SCOPES",
   HMRC_SANDBOX_TEST_USER_TYPE_KEY,
-  HMRC_SANDBOX_OAUTH_STATE_KEY,
 ] as const;
+
+interface StoredSandboxOAuthState {
+  readonly codeVerifier: string;
+  readonly createdAtMs: number;
+  readonly expiresAtMs: number;
+}
+
+const sandboxOAuthStateStore = new Map<string, StoredSandboxOAuthState>();
 
 export interface HmrcSandboxOAuthTokenResponse {
   readonly accessToken: string;
   readonly refreshToken?: string;
   readonly expiresIn?: number;
+  readonly issuedAt: string;
+  readonly expiresAt?: string;
+  readonly clockDriftBufferSeconds: number;
   readonly scope?: string;
   readonly tokenType?: string;
 }
@@ -43,9 +56,18 @@ export interface HmrcSandboxOAuthTokenResponse {
 export interface HmrcSandboxOAuthTokenSummary {
   readonly tokenType?: string;
   readonly expiresIn?: number;
+  readonly issuedAt: string;
+  readonly expiresAt?: string;
+  readonly clockDriftBufferSeconds: number;
   readonly scope?: string;
   readonly hasAccessToken: boolean;
   readonly hasRefreshToken: boolean;
+}
+
+export interface HmrcSandboxOAuthStart {
+  readonly url: URL;
+  readonly state: string;
+  readonly expiresAt: string;
 }
 
 export interface HmrcSandboxOAuthUiState {
@@ -83,12 +105,37 @@ export class HmrcSandboxOAuthError extends Error {
 export function buildSandboxOAuthAuthorisationUrl(
   source: EnvironmentSource = process.env,
 ): URL {
+  return createSandboxOAuthStart(source).url;
+}
+
+export function createSandboxOAuthStart(
+  source: EnvironmentSource = process.env,
+  options: { readonly now?: () => number } = {},
+): HmrcSandboxOAuthStart {
   const config = loadHmrcSandboxConfig(source);
-  const state = requireOAuthState(source);
+  const nowMs = (options.now ?? (() => Date.now()))();
+  const state = generateSandboxOAuthState();
+  const codeVerifier = generateSandboxPkceCodeVerifier();
+  const codeChallenge = generateSandboxPkceCodeChallenge(codeVerifier);
+  const expiresAtMs = nowMs + HMRC_SANDBOX_OAUTH_STATE_TTL_MS;
 
   assertIndividualSandboxTestUser(source);
+  pruneExpiredSandboxOAuthStates(nowMs);
 
-  return new HmrcSandboxClient(config).buildOAuthAuthorisationUrl({ state });
+  sandboxOAuthStateStore.set(state, {
+    codeVerifier,
+    createdAtMs: nowMs,
+    expiresAtMs,
+  });
+
+  return {
+    url: new HmrcSandboxClient(config).buildOAuthAuthorisationUrl({
+      state,
+      codeChallenge,
+    }),
+    state,
+    expiresAt: new Date(expiresAtMs).toISOString(),
+  };
 }
 
 export function getSandboxOAuthUiState(
@@ -134,15 +181,6 @@ export function getSandboxOAuthUiState(
     );
   }
 
-  if (
-    isPresent(source[HMRC_SANDBOX_OAUTH_STATE_KEY]) &&
-    (source[HMRC_SANDBOX_OAUTH_STATE_KEY]?.trim().length ?? 0) < 16
-  ) {
-    invalidEnvMessages.push(
-      `${HMRC_SANDBOX_OAUTH_STATE_KEY} must be at least 16 characters.`,
-    );
-  }
-
   return {
     appEnvironment: appEnvironment || "not set",
     hmrcEnvironment: hmrcEnvironment || "not set",
@@ -177,14 +215,15 @@ export async function exchangeSandboxOAuthCode(
     readonly state: string;
     readonly source?: EnvironmentSource;
     readonly fetchImpl?: FetchLike;
+    readonly now?: () => number;
   },
 ): Promise<HmrcSandboxOAuthTokenResponse> {
   const source = input.source ?? process.env;
   const config = loadHmrcSandboxConfig(source);
-  const expectedState = requireOAuthState(source);
   const code = input.code.trim();
   const state = input.state.trim();
   const fetchImpl = input.fetchImpl ?? fetch;
+  const now = input.now ?? (() => Date.now());
 
   assertIndividualSandboxTestUser(source);
 
@@ -192,16 +231,18 @@ export async function exchangeSandboxOAuthCode(
     throw new HmrcSandboxOAuthError("HMRC OAuth callback is missing code.");
   }
 
-  if (state.length === 0 || state !== expectedState) {
+  if (state.length === 0) {
     throw new HmrcSandboxOAuthError("HMRC OAuth callback state did not match.");
   }
+
+  const storedState = retrieveAndDeleteSandboxOAuthState(state, now());
 
   const response = await fetchImpl(buildTokenUrl(config), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: buildTokenRequestBody(config, code),
+    body: buildTokenRequestBody(config, code, storedState.codeVerifier),
   });
 
   const payload = await readJson(response);
@@ -213,7 +254,7 @@ export async function exchangeSandboxOAuthCode(
     });
   }
 
-  return parseTokenResponse(payload);
+  return parseTokenResponse(payload, now());
 }
 
 export function summariseSandboxOAuthToken(
@@ -222,6 +263,9 @@ export function summariseSandboxOAuthToken(
   return {
     tokenType: token.tokenType,
     expiresIn: token.expiresIn,
+    issuedAt: token.issuedAt,
+    expiresAt: token.expiresAt,
+    clockDriftBufferSeconds: token.clockDriftBufferSeconds,
     scope: token.scope,
     hasAccessToken: token.accessToken.length > 0,
     hasRefreshToken:
@@ -242,6 +286,7 @@ function buildTokenUrl(config: HmrcSandboxConfig): URL {
 function buildTokenRequestBody(
   config: HmrcSandboxConfig,
   code: string,
+  codeVerifier: string,
 ): URLSearchParams {
   const body = new URLSearchParams();
 
@@ -250,6 +295,7 @@ function buildTokenRequestBody(
   body.set("grant_type", "authorization_code");
   body.set("redirect_uri", config.redirectUri);
   body.set("code", code);
+  body.set("code_verifier", codeVerifier);
 
   return body;
 }
@@ -264,16 +310,57 @@ function assertIndividualSandboxTestUser(source: EnvironmentSource): void {
   }
 }
 
-function requireOAuthState(source: EnvironmentSource): string {
-  const state = source[HMRC_SANDBOX_OAUTH_STATE_KEY]?.trim();
+function generateSandboxOAuthState(): string {
+  return randomBase64Url(32);
+}
 
-  if (state === undefined || state.length < 16) {
+function generateSandboxPkceCodeVerifier(): string {
+  return randomBase64Url(64);
+}
+
+function generateSandboxPkceCodeChallenge(codeVerifier: string): string {
+  return createHash("sha256")
+    .update(codeVerifier)
+    .digest("base64")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
+}
+
+function randomBase64Url(byteLength: number): string {
+  return randomBytes(byteLength)
+    .toString("base64")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
+}
+
+function retrieveAndDeleteSandboxOAuthState(
+  state: string,
+  nowMs: number,
+): StoredSandboxOAuthState {
+  const storedState = sandboxOAuthStateStore.get(state);
+  sandboxOAuthStateStore.delete(state);
+
+  if (storedState === undefined) {
     throw new HmrcSandboxOAuthError(
-      `${HMRC_SANDBOX_OAUTH_STATE_KEY} must be a local-only opaque value of at least 16 characters.`,
+      "HMRC OAuth callback state did not match or has already been used.",
     );
   }
 
-  return state;
+  if (nowMs > storedState.expiresAtMs) {
+    throw new HmrcSandboxOAuthError("HMRC OAuth callback state has expired.");
+  }
+
+  return storedState;
+}
+
+function pruneExpiredSandboxOAuthStates(nowMs: number): void {
+  for (const [state, storedState] of sandboxOAuthStateStore.entries()) {
+    if (nowMs > storedState.expiresAtMs) {
+      sandboxOAuthStateStore.delete(state);
+    }
+  }
 }
 
 function isPresent(value: string | undefined): value is string {
@@ -314,13 +401,28 @@ async function readJson(
 
 function parseTokenResponse(
   payload: Readonly<Record<string, unknown>>,
+  issuedAtMs: number,
 ): HmrcSandboxOAuthTokenResponse {
   const accessToken = getRequiredString(payload, "access_token");
+  const expiresIn = getOptionalPositiveNumber(payload, "expires_in");
 
   return {
     accessToken,
     refreshToken: getOptionalString(payload, "refresh_token"),
-    expiresIn: getOptionalNumber(payload, "expires_in"),
+    expiresIn,
+    issuedAt: new Date(issuedAtMs).toISOString(),
+    expiresAt:
+      expiresIn === undefined
+        ? undefined
+        : new Date(
+            issuedAtMs +
+              Math.max(
+                0,
+                expiresIn * 1000 -
+                  HMRC_SANDBOX_OAUTH_CLOCK_DRIFT_BUFFER_SECONDS * 1000,
+              ),
+          ).toISOString(),
+    clockDriftBufferSeconds: HMRC_SANDBOX_OAUTH_CLOCK_DRIFT_BUFFER_SECONDS,
     scope: getOptionalString(payload, "scope"),
     tokenType: getOptionalString(payload, "token_type"),
   };
@@ -354,13 +456,13 @@ function getOptionalString(
   return value;
 }
 
-function getOptionalNumber(
+function getOptionalPositiveNumber(
   payload: Readonly<Record<string, unknown>>,
   key: string,
 ): number | undefined {
   const value = payload[key];
 
-  if (typeof value !== "number" || !Number.isFinite(value)) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return undefined;
   }
 
