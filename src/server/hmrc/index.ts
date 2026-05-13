@@ -6,6 +6,8 @@ export * from "./fraud-encoding";
 export * from "./fraud-prevention-collector";
 export * from "./fraud-prevention";
 export * from "./oauth";
+export * from "./oauth-callback-page";
+export * from "./oauth-session";
 export * from "./preflight";
 export * from "./sandbox-discovery";
 export * from "./redaction";

@@ -80,18 +80,18 @@ export function Ql008FraudPreventionCollector({
     >
       <div className="border-b border-slate-200 pb-4">
         <p className="text-xs font-semibold uppercase tracking-normal text-teal-800">
-          QL-008 local sandbox only
+          QL-008 sandbox only
         </p>
         <h2
           id="ql008-fraud-collector-heading"
           className="mt-1 text-base font-semibold text-slate-950"
         >
-          Fraud-prevention input collector
+          Step 2: Fraud-prevention input collector
         </h2>
       </div>
 
       <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-950">
-        <p className="font-semibold">Local sandbox warning</p>
+        <p className="font-semibold">Sandbox warning</p>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li>Not production.</li>
           <li>Do not paste collected values into chat.</li>

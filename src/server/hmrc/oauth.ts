@@ -24,6 +24,8 @@ export const HMRC_SANDBOX_DEMO_SESSION_COOKIE =
 export const HMRC_SANDBOX_DEMO_SESSION_VALUE = "active";
 export const HMRC_SANDBOX_DEMO_SESSION_PATH =
   "/api/local-sandbox/demo-session";
+export const HMRC_SANDBOX_DISCOVERY_PATH =
+  "/api/local-sandbox/sandbox-discovery";
 
 const REQUIRED_LOCAL_OAUTH_ENV_KEYS = [
   "APP_ENV",
@@ -80,10 +82,12 @@ export interface HmrcSandboxOAuthUiState {
   readonly startPath: string;
   readonly callbackPath: string;
   readonly demoSessionPath: string;
+  readonly discoveryPath: string;
   readonly requiredRedirectUri: string;
   readonly isLocalOrSandboxMode: boolean;
   readonly canUseSandboxDemoSession: boolean;
   readonly sandboxDemoSessionActive: boolean;
+  readonly sandboxTokenSessionActive: boolean;
   readonly canStartOAuth: boolean;
   readonly missingEnvVars: readonly string[];
   readonly invalidEnvMessages: readonly string[];
@@ -143,7 +147,10 @@ export function createSandboxOAuthStart(
 
 export function getSandboxOAuthUiState(
   source: EnvironmentSource = process.env,
-  options: { readonly sandboxDemoSessionActive?: boolean } = {},
+  options: {
+    readonly sandboxDemoSessionActive?: boolean;
+    readonly sandboxTokenSessionActive?: boolean;
+  } = {},
 ): HmrcSandboxOAuthUiState {
   const missingEnvVars = REQUIRED_LOCAL_OAUTH_ENV_KEYS.filter(
     (key) => !isPresent(source[key]),
@@ -158,6 +165,8 @@ export function getSandboxOAuthUiState(
     appEnvironment === "local" && hmrcEnvironment === "sandbox";
   const sandboxDemoSessionActive =
     canUseSandboxDemoSession && options.sandboxDemoSessionActive === true;
+  const sandboxTokenSessionActive =
+    canUseSandboxDemoSession && options.sandboxTokenSessionActive === true;
 
   if (isPresent(appEnvironment) && !isLocalOrSandboxMode) {
     invalidEnvMessages.push("APP_ENV must be local or sandbox for this flow.");
@@ -189,10 +198,12 @@ export function getSandboxOAuthUiState(
     startPath: HMRC_SANDBOX_OAUTH_START_PATH,
     callbackPath: HMRC_SANDBOX_OAUTH_CALLBACK_PATH,
     demoSessionPath: HMRC_SANDBOX_DEMO_SESSION_PATH,
+    discoveryPath: HMRC_SANDBOX_DISCOVERY_PATH,
     requiredRedirectUri: HMRC_SANDBOX_REQUIRED_REDIRECT_URI,
     isLocalOrSandboxMode,
     canUseSandboxDemoSession,
     sandboxDemoSessionActive,
+    sandboxTokenSessionActive,
     canStartOAuth:
       isLocalOrSandboxMode &&
       sandboxDemoSessionActive &&

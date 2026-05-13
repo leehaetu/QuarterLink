@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Ql008FraudPreventionCollector } from "./ql008-fraud-prevention-collector";
 import type {
   HmrcSandboxOAuthUiState,
+  Ql008SandboxDiscoveryResult,
   Ql008FraudCollectorUiState,
 } from "@/server/hmrc";
 
@@ -184,7 +185,6 @@ const boundaryCards = [
 ] as const;
 
 const hmrcRemainingBlockers = [
-  "Access token must be kept local only.",
   "Self-employment business ID still needed.",
   "Tax year still needed.",
   "Period start and end dates still needed.",
@@ -200,11 +200,27 @@ interface WorkspaceShellProps {
   readonly ql008FraudCollector: Ql008FraudCollectorUiState;
 }
 
+type SandboxDiscoveryResponse = Pick<
+  Ql008SandboxDiscoveryResult,
+  | "ok"
+  | "generatedAt"
+  | "hmrcNetworkCallsAttempted"
+  | "hmrcSubmissionCallsAttempted"
+  | "blockers"
+  | "items"
+> & {
+  readonly tokenSource?: string;
+};
+
 export function WorkspaceShell({
   hmrcSandboxOAuth,
   ql008FraudCollector,
 }: WorkspaceShellProps) {
   const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [sandboxDiscoveryResult, setSandboxDiscoveryResult] =
+    useState<SandboxDiscoveryResponse>();
+  const [sandboxDiscoveryError, setSandboxDiscoveryError] = useState<string>();
+  const [sandboxDiscoveryRunning, setSandboxDiscoveryRunning] = useState(false);
   const activeStep = routeBSteps[activeStepIndex];
   const stepCount = useMemo(
     () => `${activeStepIndex + 1} of ${routeBSteps.length}`,
@@ -219,6 +235,31 @@ export function WorkspaceShell({
     setActiveStepIndex((current) =>
       Math.min(routeBSteps.length - 1, current + 1),
     );
+  };
+
+  const runGuardedSandboxDiscovery = async () => {
+    setSandboxDiscoveryRunning(true);
+    setSandboxDiscoveryError(undefined);
+
+    try {
+      const response = await fetch(hmrcSandboxOAuth.discoveryPath, {
+        method: "POST",
+      });
+      const payload: unknown = await response.json();
+
+      if (!response.ok) {
+        setSandboxDiscoveryResult(undefined);
+        setSandboxDiscoveryError(readDiscoveryError(payload));
+        return;
+      }
+
+      setSandboxDiscoveryResult(payload as SandboxDiscoveryResponse);
+    } catch {
+      setSandboxDiscoveryResult(undefined);
+      setSandboxDiscoveryError("Guarded sandbox discovery did not complete.");
+    } finally {
+      setSandboxDiscoveryRunning(false);
+    }
   };
 
   return (
@@ -499,6 +540,89 @@ export function WorkspaceShell({
             </div>
 
             <aside className="space-y-6">
+              <section
+                aria-labelledby="ql008-sandbox-flow-heading"
+                className="rounded-lg border border-teal-700 bg-white p-5 shadow-sm shadow-slate-200/50"
+              >
+                <div className="flex flex-col gap-3 border-b border-slate-200 pb-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-normal text-teal-800">
+                      QL-008 sandbox sequence
+                    </p>
+                    <h2
+                      id="ql008-sandbox-flow-heading"
+                      className="mt-1 text-base font-semibold text-slate-950"
+                    >
+                      Railway sandbox flow
+                    </h2>
+                  </div>
+                  <span
+                    className={`inline-flex w-fit rounded-md px-3 py-1 text-xs font-semibold ${
+                      hmrcSandboxOAuth.sandboxDemoSessionActive
+                        ? "bg-teal-100 text-teal-900"
+                        : "bg-amber-100 text-amber-950"
+                    }`}
+                  >
+                    {hmrcSandboxOAuth.sandboxDemoSessionActive
+                      ? "Demo access active"
+                      : "Start at step 1"}
+                  </span>
+                </div>
+
+                <p className="mt-4 text-sm leading-6 text-slate-700">
+                  Temporary QL-008 sandbox demo access is allowed only when
+                  `APP_ENV` is `local` and `HMRC_ENV` is `sandbox`. It is not
+                  real QuarterLink SaaS sign-in and it is disabled outside that
+                  environment pair.
+                </p>
+
+                <ol className="mt-4 grid gap-3 text-sm">
+                  <li className="rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-3">
+                    <p className="font-semibold text-slate-950">
+                      Step 1: Continue as sandbox demo user
+                    </p>
+                    <p className="mt-1 leading-6 text-slate-700">
+                      {hmrcSandboxOAuth.sandboxDemoSessionActive
+                        ? "Temporary QL-008 sandbox demo access is active."
+                        : "Required before HMRC sandbox OAuth can start."}
+                    </p>
+                    {hmrcSandboxOAuth.canUseSandboxDemoSession &&
+                    !hmrcSandboxOAuth.sandboxDemoSessionActive ? (
+                      <form
+                        action={hmrcSandboxOAuth.demoSessionPath}
+                        method="post"
+                        className="mt-3"
+                      >
+                        <button
+                          type="submit"
+                          className="inline-flex w-full items-center justify-center rounded-md border border-amber-700 bg-white px-4 py-2 text-sm font-semibold text-amber-950 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:ring-offset-2"
+                        >
+                          Continue as sandbox demo user
+                        </button>
+                      </form>
+                    ) : null}
+                  </li>
+                  <li className="rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-3">
+                    <p className="font-semibold text-slate-950">
+                      Step 2: Collect fraud-prevention inputs
+                    </p>
+                    <p className="mt-1 leading-6 text-slate-700">
+                      Use the collector below before connecting to HMRC Sandbox.
+                      It makes no HMRC API call.
+                    </p>
+                  </li>
+                  <li className="rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-3">
+                    <p className="font-semibold text-slate-950">
+                      Step 3: Connect to HMRC Sandbox
+                    </p>
+                    <p className="mt-1 leading-6 text-slate-700">
+                      The connect button remains disabled until demo access and
+                      sandbox OAuth configuration are ready.
+                    </p>
+                  </li>
+                </ol>
+              </section>
+
               <Ql008FraudPreventionCollector
                 collector={ql008FraudCollector}
               />
@@ -516,7 +640,7 @@ export function WorkspaceShell({
                       id="hmrc-sandbox-heading"
                       className="mt-1 text-base font-semibold text-slate-950"
                     >
-                      HMRC sandbox connection
+                      Step 3: HMRC sandbox connection
                     </h2>
                   </div>
                   <span
@@ -540,30 +664,17 @@ export function WorkspaceShell({
                 </p>
 
                 {hmrcSandboxOAuth.canUseSandboxDemoSession ? (
-                  hmrcSandboxOAuth.sandboxDemoSessionActive ? (
-                    <p className="mt-3 rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm leading-6 text-teal-950">
-                      Local sandbox demo user active. This is not real
-                      QuarterLink authentication and it creates no user record.
-                    </p>
-                  ) : (
-                    <form
-                      action={hmrcSandboxOAuth.demoSessionPath}
-                      method="post"
-                      className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-3"
-                    >
-                      <p className="text-sm leading-6 text-amber-950">
-                        Full SaaS sign-in is not built yet. Continue with a
-                        temporary local sandbox demo user before starting HMRC
-                        sandbox OAuth.
-                      </p>
-                      <button
-                        type="submit"
-                        className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-amber-700 bg-white px-4 py-2 text-sm font-semibold text-amber-950 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:ring-offset-2"
-                      >
-                        Continue as sandbox demo user
-                      </button>
-                    </form>
-                  )
+                  <p
+                    className={`mt-3 rounded-md border px-3 py-2 text-sm leading-6 ${
+                      hmrcSandboxOAuth.sandboxDemoSessionActive
+                        ? "border-teal-200 bg-teal-50 text-teal-950"
+                        : "border-amber-300 bg-amber-50 text-amber-950"
+                    }`}
+                  >
+                    {hmrcSandboxOAuth.sandboxDemoSessionActive
+                      ? "Temporary QL-008 sandbox demo access is active. This is not real QuarterLink authentication and it creates no user record."
+                      : "Complete Step 1 before connecting to HMRC Sandbox."}
+                  </p>
                 ) : (
                   <p className="mt-3 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
                     Outside the local sandbox demo flow, a real QuarterLink user
@@ -650,6 +761,11 @@ export function WorkspaceShell({
                   <h3 className="text-sm font-semibold text-slate-950">
                     After OAuth
                   </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">
+                    {hmrcSandboxOAuth.sandboxTokenSessionActive
+                      ? "Sandbox OAuth token session is active server-side. Token values are not displayed in the browser."
+                      : "Complete HMRC sandbox OAuth to create a temporary server-side sandbox token session."}
+                  </p>
                   <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-700">
                     {hmrcRemainingBlockers.map((blocker) => (
                       <li key={blocker}>{blocker}</li>
@@ -659,7 +775,79 @@ export function WorkspaceShell({
 
                 <div className="mt-4 rounded-md border border-slate-200 bg-white px-3 py-3">
                   <h3 className="text-sm font-semibold text-slate-950">
-                    Next command
+                    Guarded sandbox discovery
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">
+                    Dry-run remains the default. No HMRC call is made unless
+                    `QL_008_DISCOVERY_ALLOW_HMRC_CALLS=true` and the required
+                    fraud-prevention inputs are present.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={runGuardedSandboxDiscovery}
+                    disabled={
+                      !hmrcSandboxOAuth.sandboxTokenSessionActive ||
+                      sandboxDiscoveryRunning
+                    }
+                    className="mt-3 inline-flex w-full items-center justify-center rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-700 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    {sandboxDiscoveryRunning
+                      ? "Running guarded discovery"
+                      : "Run guarded sandbox discovery"}
+                  </button>
+                  {!hmrcSandboxOAuth.sandboxTokenSessionActive ? (
+                    <p className="mt-2 text-xs leading-5 text-slate-600">
+                      Complete Step 3 before running guarded sandbox discovery.
+                    </p>
+                  ) : null}
+                  {sandboxDiscoveryError !== undefined ? (
+                    <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-6 text-rose-900">
+                      {sandboxDiscoveryError}
+                    </p>
+                  ) : null}
+                  {sandboxDiscoveryResult !== undefined ? (
+                    <div className="mt-3 rounded-md border border-slate-200 bg-[#fafbf8] px-3 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-normal text-slate-500">
+                        Discovery result
+                      </p>
+                      <dl className="mt-2 grid gap-2 text-xs leading-5 text-slate-700">
+                        <div>
+                          <dt className="font-semibold">Token source</dt>
+                          <dd>{sandboxDiscoveryResult.tokenSource ?? "not returned"}</dd>
+                        </div>
+                        <div>
+                          <dt className="font-semibold">HMRC network calls</dt>
+                          <dd>
+                            {sandboxDiscoveryResult.hmrcNetworkCallsAttempted
+                              ? "attempted"
+                              : "not attempted"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="font-semibold">HMRC submission calls</dt>
+                          <dd>
+                            {sandboxDiscoveryResult.hmrcSubmissionCallsAttempted
+                              ? "attempted"
+                              : "not attempted"}
+                          </dd>
+                        </div>
+                      </dl>
+                      {sandboxDiscoveryResult.blockers.length > 0 ? (
+                        <ul className="mt-3 list-disc space-y-1 pl-5 text-xs leading-5 text-slate-700">
+                          {sandboxDiscoveryResult.blockers
+                            .slice(0, 4)
+                            .map((blocker) => (
+                              <li key={blocker}>{blocker}</li>
+                            ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-4 rounded-md border border-slate-200 bg-white px-3 py-3">
+                  <h3 className="text-sm font-semibold text-slate-950">
+                    Local preflight command
                   </h3>
                   <p className="mt-2 break-all font-mono text-xs leading-5 text-slate-700">
                     {preflightCommand}
@@ -740,4 +928,17 @@ export function WorkspaceShell({
       </div>
     </main>
   );
+}
+
+function readDiscoveryError(payload: unknown): string {
+  if (
+    payload !== null &&
+    typeof payload === "object" &&
+    !Array.isArray(payload) &&
+    typeof (payload as { readonly detail?: unknown }).detail === "string"
+  ) {
+    return (payload as { readonly detail: string }).detail;
+  }
+
+  return "Guarded sandbox discovery was not available.";
 }

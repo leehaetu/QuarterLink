@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   buildSandboxOAuthAuthorisationUrl,
+  canDisplaySandboxOAuthTokenInCallback,
+  clearSandboxOAuthTokenSessionsForTest,
+  createSandboxOAuthTokenSession,
   createSandboxOAuthStart,
   exchangeSandboxOAuthCode,
+  getSandboxOAuthSuccessStatusText,
   getSandboxOAuthUiState,
   HMRC_SANDBOX_API_BASE_URL,
   HMRC_SANDBOX_AUTH_BASE_URL,
@@ -11,6 +15,8 @@ import {
   HMRC_SANDBOX_REQUIRED_REDIRECT_URI,
   HmrcSandboxOAuthError,
   isSandboxDemoSessionCookieActive,
+  renderSandboxOAuthCallbackPage,
+  resolveSandboxOAuthTokenSession,
   summariseSandboxOAuthToken,
 } from "../../../src/server/hmrc";
 
@@ -140,6 +146,7 @@ describe("HMRC sandbox OAuth readiness", () => {
     assert.equal(state.canStartOAuth, false);
     assert.equal(state.canUseSandboxDemoSession, true);
     assert.equal(state.sandboxDemoSessionActive, false);
+    assert.equal(state.sandboxTokenSessionActive, false);
   });
 
   test("does not enable the demo session bypass outside local sandbox mode", () => {
@@ -334,5 +341,164 @@ describe("HMRC sandbox OAuth readiness", () => {
     });
     assert(!JSON.stringify(summary).includes("unit-test-primary-value"));
     assert(!JSON.stringify(summary).includes("unit-test-secondary-value"));
+  });
+
+  test("Railway callback output does not display OAuth tokens", () => {
+    const accessToken = "railway-token-that-must-not-render";
+    const refreshToken = "railway-refresh-token-that-must-not-render";
+    const page = renderSandboxOAuthCallbackPage({
+      ok: true,
+      title: "HMRC Sandbox OAuth Complete",
+      statusText: getSandboxOAuthSuccessStatusText({
+        requestUrl: railwayRedirectUri,
+        tokenSessionStored: true,
+      }),
+      accessToken,
+      summary: summariseSandboxOAuthToken({
+        accessToken,
+        refreshToken,
+        issuedAt: "2026-05-13T10:01:00.000Z",
+        expiresAt: "2026-05-13T11:00:00.000Z",
+        clockDriftBufferSeconds: 60,
+        tokenType: "bearer",
+      }),
+      tokenDisplayEnabled: canDisplaySandboxOAuthTokenInCallback({
+        requestUrl: railwayRedirectUri,
+        source: {
+          ...oauthEnv,
+          HMRC_SANDBOX_OAUTH_SHOW_TOKENS: "true",
+        },
+      }),
+      tokenSessionStored: true,
+      localhostCallback: false,
+    });
+
+    assert(page.includes(
+      "OAuth token exchange succeeded. Token is held only for this sandbox session. No HMRC submission has been made.",
+    ));
+    assert(!page.includes(accessToken));
+    assert(!page.includes(refreshToken));
+    assert(!page.includes("HMRC_SANDBOX_ACCESS_TOKEN"));
+    assert(!page.includes(".env.local"));
+  });
+
+  test("localhost callback displays token only when explicitly enabled", () => {
+    const accessToken = "localhost-token-visible-only-when-enabled";
+    const requestUrl = "http://localhost:3000/api/hmrc/oauth/callback";
+
+    assert.equal(
+      canDisplaySandboxOAuthTokenInCallback({
+        requestUrl,
+        source: {
+          ...oauthEnv,
+          HMRC_SANDBOX_OAUTH_SHOW_TOKENS: "true",
+        },
+      }),
+      true,
+    );
+    assert.equal(
+      canDisplaySandboxOAuthTokenInCallback({
+        requestUrl,
+        source: oauthEnv,
+      }),
+      false,
+    );
+
+    const hiddenPage = renderSandboxOAuthCallbackPage({
+      ok: true,
+      title: "HMRC Sandbox OAuth Complete",
+      statusText: "OAuth token exchange succeeded. Token display is hidden.",
+      accessToken,
+      summary: summariseSandboxOAuthToken({
+        accessToken,
+        issuedAt: "2026-05-13T10:01:00.000Z",
+        clockDriftBufferSeconds: 60,
+      }),
+      tokenDisplayEnabled: false,
+      tokenSessionStored: false,
+      localhostCallback: true,
+    });
+    const visiblePage = renderSandboxOAuthCallbackPage({
+      ok: true,
+      title: "HMRC Sandbox OAuth Complete",
+      statusText: "OAuth token exchange succeeded.",
+      accessToken,
+      summary: summariseSandboxOAuthToken({
+        accessToken,
+        issuedAt: "2026-05-13T10:01:00.000Z",
+        clockDriftBufferSeconds: 60,
+      }),
+      tokenDisplayEnabled: true,
+      tokenSessionStored: false,
+      localhostCallback: true,
+    });
+
+    assert(!hiddenPage.includes(accessToken));
+    assert(visiblePage.includes(accessToken));
+    assert(visiblePage.includes("HMRC_SANDBOX_ACCESS_TOKEN"));
+  });
+
+  test("sandbox token handoff is unavailable outside local sandbox mode", () => {
+    clearSandboxOAuthTokenSessionsForTest();
+
+    const disabled = createSandboxOAuthTokenSession({
+      env: {
+        ...oauthEnv,
+        APP_ENV: "sandbox",
+      },
+      token: {
+        accessToken: "token-that-must-not-store",
+        issuedAt: "2026-05-13T10:01:00.000Z",
+        expiresAt: "2026-05-13T11:00:00.000Z",
+        clockDriftBufferSeconds: 60,
+      },
+      now: () => Date.parse("2026-05-13T10:01:00.000Z"),
+    });
+
+    assert.deepEqual(disabled, { ok: false, reason: "disabled" });
+    assert.deepEqual(
+      resolveSandboxOAuthTokenSession({
+        env: {
+          ...oauthEnv,
+          APP_ENV: "sandbox",
+        },
+        cookieValue: "anything",
+      }),
+      { ok: false, reason: "disabled" },
+    );
+  });
+
+  test("sandbox token handoff stores only an opaque cookie value", () => {
+    clearSandboxOAuthTokenSessionsForTest();
+
+    const accessToken = "server-only-token-that-must-not-enter-cookie";
+    const session = createSandboxOAuthTokenSession({
+      env: oauthEnv,
+      sessionId: "unit-test-session",
+      token: {
+        accessToken,
+        issuedAt: "2026-05-13T10:01:00.000Z",
+        expiresAt: "2026-05-13T11:00:00.000Z",
+        clockDriftBufferSeconds: 60,
+      },
+      now: () => Date.parse("2026-05-13T10:01:00.000Z"),
+    });
+
+    assert.equal(session.ok, true);
+    assert(!JSON.stringify(session).includes(accessToken));
+
+    if (!session.ok) {
+      assert.fail("Expected sandbox token session to be created.");
+    }
+
+    assert(!session.cookieValue.includes(accessToken));
+    assert.equal(
+      resolveSandboxOAuthTokenSession({
+        env: oauthEnv,
+        cookieValue: session.cookieValue,
+        now: () => Date.parse("2026-05-13T10:02:00.000Z"),
+      }).ok,
+      true,
+    );
   });
 });
